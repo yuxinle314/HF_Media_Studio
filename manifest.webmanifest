@@ -1,0 +1,18 @@
+{
+  "name": "影音工坊 · Media Studio",
+  "short_name": "影音工坊",
+  "description": "拍照压缩、图片瘦身与 Codec2 语音声码器，纯本地处理。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

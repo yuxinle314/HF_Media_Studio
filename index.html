@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <title>影音工坊 · Media Studio</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <!--
+      coi-serviceworker 注入 COOP/COEP 响应头, 使页面进入 crossOriginIsolated 状态,
+      从而允许 ffmpeg.wasm 多线程核心使用 SharedArrayBuffer.
+      它必须在最前面加载 (首次会自动刷新一次页面以激活 Service Worker).
+    -->
+    <script src="./coi-serviceworker.min.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <h1 class="app-title">影音工坊</h1>
+        <p class="app-subtitle">拍照压缩 · 图片瘦身 · 语音声码器</p>
+        <nav class="segmented" role="tablist" aria-label="功能">
+          <button class="seg-item is-active" role="tab" data-tab="camera">拍照</button>
+          <button class="seg-item" role="tab" data-tab="image">图片</button>
+          <button class="seg-item" role="tab" data-tab="audio">音频</button>
+          <span class="seg-indicator" aria-hidden="true"></span>
+        </nav>
+      </header>
+
+      <main class="content">
+        <!-- ============ 拍照 ============ -->
+        <section class="panel is-active" id="panel-camera" role="tabpanel">
+          <div class="card">
+            <div class="card-head">
+              <h2>摄像头拍照</h2>
+              <select id="cam-device" class="select" aria-label="选择摄像头"></select>
+            </div>
+            <div class="viewfinder">
+              <video id="cam-video" playsinline autoplay muted></video>
+              <div class="viewfinder-empty" id="cam-empty">
+                <div class="vf-icon">📷</div>
+                <p>未开启摄像头</p>
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn btn-secondary" id="cam-toggle">开启摄像头</button>
+              <button class="btn btn-primary" id="cam-shot" disabled>拍照</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>压缩设置</h2>
+            <div class="field">
+              <label>目标大小</label>
+              <div class="segmented small" data-group="cam-size">
+                <button class="seg-item is-active" data-val="50">50&nbsp;KB</button>
+                <button class="seg-item" data-val="100">100&nbsp;KB</button>
+                <button class="seg-item" data-val="200">200&nbsp;KB</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>分辨率</label>
+              <div class="segmented small wrap" data-group="cam-res">
+                <button class="seg-item is-active" data-val="auto">自动</button>
+                <button class="seg-item" data-val="1920x1080">1920×1080</button>
+                <button class="seg-item" data-val="1024x768">1024×768</button>
+                <button class="seg-item" data-val="960x540">960×540</button>
+                <button class="seg-item" data-val="480x270">480×270</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>格式</label>
+              <div class="segmented small" data-group="cam-fmt">
+                <button class="seg-item is-active" data-val="image/jpeg">JPEG</button>
+                <button class="seg-item" data-val="image/webp">WebP</button>
+              </div>
+            </div>
+            <p class="hint">允许 ±20% 抖动 · 分辨率不会超过原始画面</p>
+          </div>
+
+          <div class="card result-card" id="cam-result" hidden>
+            <h2>压缩结果</h2>
+            <div class="result-body">
+              <img id="cam-out-img" class="result-thumb" alt="压缩结果预览" />
+              <dl class="result-meta" id="cam-out-meta"></dl>
+            </div>
+            <button class="btn btn-primary full" id="cam-download">保存到 pics/</button>
+          </div>
+        </section>
+
+        <!-- ============ 图片文件 ============ -->
+        <section class="panel" id="panel-image" role="tabpanel">
+          <div class="card">
+            <h2>选择图片文件</h2>
+            <label class="dropzone" id="img-drop">
+              <input type="file" id="img-file" accept="image/*" hidden />
+              <div class="vf-icon">🖼️</div>
+              <p><strong>点击选择</strong> 或拖拽图片到此</p>
+              <small>JPG / PNG / WebP / GIF…</small>
+            </label>
+          </div>
+
+          <div class="card">
+            <h2>压缩设置</h2>
+            <div class="field">
+              <label>目标大小</label>
+              <div class="segmented small" data-group="img-size">
+                <button class="seg-item is-active" data-val="50">50&nbsp;KB</button>
+                <button class="seg-item" data-val="100">100&nbsp;KB</button>
+                <button class="seg-item" data-val="200">200&nbsp;KB</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>分辨率</label>
+              <div class="segmented small wrap" data-group="img-res">
+                <button class="seg-item is-active" data-val="auto">自动</button>
+                <button class="seg-item" data-val="1920x1080">1920×1080</button>
+                <button class="seg-item" data-val="1024x768">1024×768</button>
+                <button class="seg-item" data-val="960x540">960×540</button>
+                <button class="seg-item" data-val="480x270">480×270</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>格式</label>
+              <div class="segmented small" data-group="img-fmt">
+                <button class="seg-item is-active" data-val="image/jpeg">JPEG</button>
+                <button class="seg-item" data-val="image/webp">WebP</button>
+              </div>
+            </div>
+            <button class="btn btn-primary full" id="img-run" disabled>开始压缩</button>
+            <p class="hint">允许 ±20% 抖动 · 分辨率不会超过原始尺寸</p>
+          </div>
+
+          <div class="card result-card" id="img-result" hidden>
+            <h2>压缩结果</h2>
+            <div class="result-body">
+              <img id="img-out-img" class="result-thumb" alt="压缩结果预览" />
+              <dl class="result-meta" id="img-out-meta"></dl>
+            </div>
+            <button class="btn btn-primary full" id="img-download">保存到 pics/</button>
+          </div>
+        </section>
+
+        <!-- ============ 音频 ============ -->
+        <section class="panel" id="panel-audio" role="tabpanel">
+          <div class="card">
+            <h2>语音录音</h2>
+            <div class="recorder">
+              <div class="level-meter"><span id="aud-level"></span></div>
+              <div class="rec-time"><span id="aud-time">0.0</span><small>/ 60.0 s</small></div>
+              <div class="rec-progress"><span id="aud-rec-progress"></span></div>
+              <div class="row">
+                <button class="btn btn-primary" id="aud-rec">按住录音</button>
+                <button class="btn btn-secondary" id="aud-play-src" disabled>试听原声</button>
+              </div>
+              <p class="hint" style="text-align:center;margin-top:4px">按住按钮录音，松开结束 · 最长 60 秒</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>或选择音频文件</h2>
+            <label class="dropzone slim" id="aud-drop">
+              <input type="file" id="aud-file" accept="audio/*" hidden />
+              <div class="vf-icon">🎵</div>
+              <p><strong>点击选择</strong> 或拖拽音频到此</p>
+              <small>MP3 / WAV / M4A / OGG / FLAC…</small>
+            </label>
+          </div>
+
+          <div class="card">
+            <h2>声码器设置 (Codec2)</h2>
+            <div class="field">
+              <label>压缩档位</label>
+              <div class="segmented small wrap" data-group="aud-mode">
+                <button class="seg-item is-active" data-val="700C">极致 700C</button>
+                <button class="seg-item" data-val="1300">标准 1300</button>
+                <button class="seg-item" data-val="2400">清晰 2400</button>
+                <button class="seg-item" data-val="3200">高质 3200</button>
+              </div>
+            </div>
+            <button class="btn btn-primary full" id="aud-run" disabled>压缩 / 转码</button>
+            <p class="hint">8&nbsp;kHz 单声道语音声码器 · 档位越低体积越小, 音质越偏"对讲机"</p>
+            <div class="progress" id="aud-progress" hidden><span></span></div>
+            <p class="status" id="aud-status"></p>
+          </div>
+
+          <div class="card result-card" id="aud-result" hidden>
+            <h2>压缩结果</h2>
+            <dl class="result-meta" id="aud-out-meta"></dl>
+            <div class="row">
+              <button class="btn btn-secondary" id="aud-play-out">▶ 试听结果</button>
+              <button class="btn btn-primary" id="aud-download">保存到 voices/</button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p class="saveloc">
+          输出文件夹：<strong id="saveloc-name">浏览器下载</strong>
+          <button class="linkbtn" id="saveloc-btn" hidden>选择文件夹…</button>
+        </p>
+        <p>照片存入 <code>pics/</code>，音频存入 <code>voices/</code> · 纯本地处理，数据不上传 · 摄像头/麦克风需在 HTTPS 或 localhost 下授权</p>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>

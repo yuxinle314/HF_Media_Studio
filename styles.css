@@ -1,0 +1,588 @@
+/* ============================================================
+   影音工坊 · Apple HIG 风格样式
+   设计语言参考: iOS / macOS — SF 字体栈, 系统色, 分段控件,
+   毛玻璃卡片, 大圆角, 自适应深浅色.
+   ============================================================ */
+
+:root {
+  --sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial,
+    sans-serif;
+
+  /* 系统强调色 (iOS Blue) */
+  --accent: #007aff;
+  --accent-press: #0063cc;
+
+  /* 浅色主题 */
+  --bg: #f2f2f7;
+  --bg-grouped: #ffffff;
+  --card: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(0, 0, 0, 0.06);
+  --text: #1c1c1e;
+  --text-2: #3c3c43;
+  --text-3: rgba(60, 60, 67, 0.6);
+  --separator: rgba(60, 60, 67, 0.18);
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-strong: rgba(120, 120, 128, 0.2);
+  --seg-bg: rgba(118, 118, 128, 0.12);
+  --seg-knob: #ffffff;
+  --green: #34c759;
+  --orange: #ff9500;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #0a84ff;
+    --accent-press: #409cff;
+    --bg: #000000;
+    --bg-grouped: #1c1c1e;
+    --card: rgba(28, 28, 30, 0.72);
+    --card-border: rgba(255, 255, 255, 0.08);
+    --text: #ffffff;
+    --text-2: #ebebf5;
+    --text-3: rgba(235, 235, 245, 0.6);
+    --separator: rgba(84, 84, 88, 0.6);
+    --fill: rgba(120, 120, 128, 0.24);
+    --fill-strong: rgba(120, 120, 128, 0.36);
+    --seg-bg: rgba(118, 118, 128, 0.24);
+    --seg-knob: #636366;
+    --green: #30d158;
+    --orange: #ff9f0a;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--sf);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.4;
+  /* 柔和的背景光晕, Apple 风格 */
+  background-image: radial-gradient(
+      120% 80% at 50% -10%,
+      rgba(0, 122, 255, 0.1),
+      transparent 60%
+    );
+  background-attachment: fixed;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: env(safe-area-inset-top) 16px 40px;
+}
+
+/* ---------------- 顶栏 ---------------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 22px 0 12px;
+  margin-bottom: 8px;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: linear-gradient(var(--bg), color-mix(in srgb, var(--bg) 60%, transparent));
+}
+
+.app-title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.app-subtitle {
+  margin: 2px 0 16px;
+  color: var(--text-3);
+  font-size: 15px;
+}
+
+/* ---------------- 分段控件 ---------------- */
+.segmented {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  background: var(--seg-bg);
+  border-radius: 12px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.segmented.small {
+  width: auto;
+  border-radius: 10px;
+}
+
+.segmented.wrap {
+  flex-wrap: wrap;
+}
+
+.seg-item {
+  flex: 1 1 0;
+  position: relative;
+  z-index: 2;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s, background 0.2s;
+}
+
+.segmented.small .seg-item {
+  flex: 0 1 auto;
+  font-size: 13px;
+  padding: 7px 14px;
+}
+
+.seg-item.is-active {
+  background: var(--seg-knob);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.seg-item:active {
+  transform: scale(0.97);
+}
+
+/* 顶层主导航的滑块隐藏(直接用 active 背景即可) */
+.seg-indicator {
+  display: none;
+}
+
+/* ---------------- 卡片 ---------------- */
+.card {
+  background: var(--card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+
+.card h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 14px;
+  letter-spacing: -0.01em;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field > label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 12px 0 0;
+}
+
+/* ---------------- 面板切换 ---------------- */
+.panel {
+  display: none;
+  animation: fade 0.3s ease;
+}
+
+.panel.is-active {
+  display: block;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------- 按钮 ---------------- */
+.btn {
+  appearance: none;
+  border: 0;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 12px 20px;
+  border-radius: 13px;
+  cursor: pointer;
+  transition: transform 0.12s, background 0.2s, opacity 0.2s;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:not(:disabled):hover {
+  background: var(--accent-press);
+}
+
+.btn-secondary {
+  background: var(--fill);
+  color: var(--accent);
+}
+
+.btn-secondary:not(:disabled):hover {
+  background: var(--fill-strong);
+}
+
+.btn.full {
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.row .btn {
+  flex: 1;
+}
+
+/* ---------------- 下拉选择 ---------------- */
+.select {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--fill);
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  max-width: 55%;
+}
+
+/* ---------------- 取景器 ---------------- */
+.viewfinder {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.viewfinder video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.viewfinder-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  gap: 6px;
+}
+
+.vf-icon {
+  font-size: 40px;
+}
+
+/* ---------------- 拖放区 ---------------- */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 32px 16px;
+  border: 2px dashed var(--separator);
+  border-radius: 14px;
+  cursor: pointer;
+  color: var(--text-2);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.dropzone.slim {
+  padding: 22px 16px;
+}
+
+.dropzone:hover,
+.dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--fill);
+}
+
+.dropzone small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* ---------------- 结果卡片 ---------------- */
+.result-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.result-thumb {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--fill);
+  flex-shrink: 0;
+}
+
+.result-meta {
+  margin: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 14px;
+}
+
+.result-meta dt {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.result-meta dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge.ok {
+  background: color-mix(in srgb, var(--green) 18%, transparent);
+  color: var(--green);
+}
+
+.badge.warn {
+  background: color-mix(in srgb, var(--orange) 18%, transparent);
+  color: var(--orange);
+}
+
+/* ---------------- 录音器 ---------------- */
+.recorder {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.level-meter {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.level-meter span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--green), var(--accent));
+  transition: width 0.06s linear;
+}
+
+.rec-time {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-time span {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.rec-time small {
+  color: var(--text-3);
+  font-size: 15px;
+  margin-left: 6px;
+}
+
+/* 按住录音进度条 (60s = 100%) */
+.rec-progress {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.rec-progress span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ff9500, #ff3b30);
+  transition: width 0.06s linear;
+}
+
+/* 按住录音时禁止文本选中/长按菜单 */
+#aud-rec {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.btn.recording {
+  background: #ff3b30;
+  animation: pulse 1.4s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 59, 48, 0);
+  }
+}
+
+/* ---------------- 进度条 / 状态 ---------------- */
+.progress {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--fill);
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.status {
+  font-size: 13px;
+  color: var(--text-3);
+  margin: 10px 0 0;
+  min-height: 1em;
+}
+
+/* ---------------- 页脚 ---------------- */
+.footer {
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12px;
+  margin-top: 24px;
+}
+
+.footer code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--fill);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+.saveloc {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.saveloc strong {
+  font-weight: 600;
+}
+
+.linkbtn {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.linkbtn:hover {
+  text-decoration: underline;
+}
+
+/* ---------------- Toast ---------------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  backdrop-filter: blur(10px);
+  max-width: 90vw;
+  text-align: center;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
