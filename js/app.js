@@ -331,6 +331,7 @@ function initAudio() {
   const c2MetaEl = $("c2-out-meta");
   const c2PlayBtn = $("c2-play-out");
   const c2DownloadBtn = $("c2-download");
+  const speechCard = $("speech-card");
   const sttStartBtn = $("stt-start");
   const sttStopBtn = $("stt-stop");
   const sttTimeEl = $("stt-time");
@@ -366,6 +367,8 @@ function initAudio() {
   let speechActive = false;
   let speechStartTime = 0;
   let speechTimer = null;
+  let speechServiceReady = false;
+  let speechAvailabilityChecking = false;
   let speechFinalText = "";
   let speechHadError = false;
 
@@ -406,9 +409,78 @@ function initAudio() {
 
   function setSpeechRunning(running) {
     speechActive = running;
-    sttStartBtn.disabled = running;
+    sttStartBtn.disabled = running || !speechServiceReady;
     sttStopBtn.disabled = !running;
     sttStartBtn.textContent = running ? "识别中…" : "开始识别";
+  }
+
+  function setSpeechAvailability(available, message) {
+    speechServiceReady = available;
+    speechCard.classList.toggle("is-unavailable", !available);
+    speechCard.setAttribute("aria-disabled", String(!available));
+    sttTextEl.readOnly = !available;
+    if (!speechActive) {
+      sttStartBtn.disabled = !available;
+      sttStopBtn.disabled = true;
+      sttStartBtn.textContent = "开始识别";
+    }
+    sttStatusEl.textContent = message;
+  }
+
+  async function probeSpeechNetwork(timeoutMs = 3500) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let apiAnswered = false;
+
+    try {
+      const resp = await fetch(`/api/netcheck?_=${Date.now()}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const contentType = resp.headers.get("content-type") || "";
+      if (resp.ok && contentType.includes("application/json")) {
+        apiAnswered = true;
+        const data = await resp.json();
+        if (data.ok) return true;
+        throw new Error("offline");
+      }
+    } catch (e) {
+      if (apiAnswered || !navigator.onLine) throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    return navigator.onLine;
+  }
+
+  async function refreshSpeechAvailability({ silent = false } = {}) {
+    if (speechActive || speechAvailabilityChecking) return speechServiceReady;
+    speechAvailabilityChecking = true;
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setSpeechAvailability(false, "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。");
+      speechAvailabilityChecking = false;
+      return false;
+    }
+
+    if (!navigator.onLine) {
+      setSpeechAvailability(false, "当前网络离线，语音转文字暂不可用。");
+      speechAvailabilityChecking = false;
+      return false;
+    }
+
+    if (!silent) sttStatusEl.textContent = "正在检测在线语音识别服务…";
+    try {
+      await probeSpeechNetwork();
+      setSpeechAvailability(true, "在线语音识别服务可用，最长识别 60 秒。");
+      return true;
+    } catch {
+      setSpeechAvailability(false, "无法连接在线语音识别服务，语音转文字暂不可用。");
+      return false;
+    } finally {
+      speechAvailabilityChecking = false;
+    }
   }
 
   function updateSpeechProgress() {
@@ -436,6 +508,10 @@ function initAudio() {
       sttStatusEl.textContent = "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。";
       toast("浏览器不支持语音识别");
       return;
+    }
+    if (!speechServiceReady) {
+      refreshSpeechAvailability();
+      return toast("语音转文字暂不可用");
     }
     if (mediaRecorder && mediaRecorder.state === "recording") {
       return toast("请先结束录音");
@@ -478,7 +554,11 @@ function initAudio() {
       const message = event.error === "not-allowed"
         ? "麦克风或语音识别权限被拒绝"
         : "语音识别失败: " + event.error;
-      sttStatusEl.textContent = message;
+      if (event.error === "network") {
+        setSpeechAvailability(false, "无法连接在线语音识别服务，语音转文字暂不可用。");
+      } else {
+        sttStatusEl.textContent = message;
+      }
       toast(message);
     };
 
@@ -509,15 +589,16 @@ function initAudio() {
   }
 
   function initSpeechToText() {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      sttStartBtn.disabled = true;
-      sttStopBtn.disabled = true;
-      sttStatusEl.textContent = "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。";
-      return;
-    }
-
-    sttStatusEl.textContent = "准备就绪，最长识别 60 秒。";
+    setSpeechAvailability(false, "正在检测在线语音识别服务…");
+    refreshSpeechAvailability();
+    window.addEventListener("online", () => refreshSpeechAvailability());
+    window.addEventListener("offline", () =>
+      setSpeechAvailability(false, "当前网络离线，语音转文字暂不可用。")
+    );
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshSpeechAvailability({ silent: true });
+    });
+    setInterval(() => refreshSpeechAvailability({ silent: true }), 30_000);
 
     sttTextEl.addEventListener("input", () => setSpeechText(sttTextEl.value));
 

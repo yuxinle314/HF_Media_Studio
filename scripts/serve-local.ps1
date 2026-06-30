@@ -81,6 +81,54 @@ function Send-Text {
   Send-Response -Stream $Stream -StatusCode $StatusCode -Reason $Reason -Body $Body -ContentType "text/plain; charset=utf-8" -IncludeBody $IncludeBody
 }
 
+function Send-Json {
+  param(
+    [System.IO.Stream]$Stream,
+    [int]$StatusCode,
+    [string]$Reason,
+    [object]$Data,
+    [bool]$IncludeBody = $true
+  )
+
+  $Json = $Data | ConvertTo-Json -Depth 6 -Compress
+  $Body = [System.Text.Encoding]::UTF8.GetBytes($Json)
+  Send-Response -Stream $Stream -StatusCode $StatusCode -Reason $Reason -Body $Body -ContentType "application/json; charset=utf-8" -IncludeBody $IncludeBody
+}
+
+function Test-ExternalNetwork {
+  $Targets = @(
+    "https://www.baidu.com/favicon.ico",
+    "https://www.qq.com/favicon.ico"
+  )
+
+  foreach ($Target in $Targets) {
+    try {
+      $Request = [System.Net.HttpWebRequest]::Create($Target)
+      $Request.Method = "GET"
+      $Request.Timeout = 1500
+      $Request.ReadWriteTimeout = 1500
+      $Request.UserAgent = "HF-Media-Studio-Netcheck"
+      $Response = $Request.GetResponse()
+      $StatusCode = [int]$Response.StatusCode
+      $Response.Close()
+      if ($StatusCode -ge 200 -and $StatusCode -lt 500) {
+        return @{
+          ok = $true
+          target = $Target
+          status = $StatusCode
+        }
+      }
+    } catch {
+    }
+  }
+
+  @{
+    ok = $false
+    target = $null
+    status = 0
+  }
+}
+
 $RequestedPort = $Port
 $Listener = $null
 
@@ -151,6 +199,12 @@ try {
 
       if ($Method -ne "GET" -and $Method -ne "HEAD") {
         Send-Text -Stream $Stream -StatusCode 405 -Reason "Method Not Allowed" -Text "Method Not Allowed" -IncludeBody $IncludeBody
+        continue
+      }
+
+      if ($RequestPath -eq "/api/netcheck") {
+        $Result = Test-ExternalNetwork
+        Send-Json -Stream $Stream -StatusCode 200 -Reason "OK" -Data $Result -IncludeBody $IncludeBody
         continue
       }
 

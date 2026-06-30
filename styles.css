@@ -574,6 +574,32 @@ body {
   gap: 14px;
 }
 
+.card.is-unavailable {
+  filter: grayscale(0.85);
+  background: color-mix(in srgb, var(--card) 68%, var(--separator) 32%);
+  border-color: color-mix(in srgb, var(--separator) 78%, transparent);
+  box-shadow: none;
+}
+
+.card.is-unavailable h2,
+.card.is-unavailable .hint,
+.card.is-unavailable .rec-time {
+  color: var(--text-3);
+}
+
+.card.is-unavailable .speech-box {
+  opacity: 0.62;
+}
+
+.card.is-unavailable .btn,
+.card.is-unavailable .transcript {
+  cursor: not-allowed;
+}
+
+.card.is-unavailable .rec-progress span {
+  background: var(--separator);
+}
+
 .transcript {
   width: 100%;
   min-height: 132px;
