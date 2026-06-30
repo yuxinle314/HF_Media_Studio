@@ -123,7 +123,10 @@
               <img id="cam-out-img" class="result-thumb" alt="压缩结果预览" />
               <dl class="result-meta" id="cam-out-meta"></dl>
             </div>
-            <button class="btn btn-primary full" id="cam-download">保存到 pics/</button>
+            <div class="row result-actions">
+              <button class="btn btn-primary" id="cam-download">保存到本机</button>
+              <button class="btn btn-secondary" id="cam-upload">上传到服务电脑</button>
+            </div>
           </div>
         </section>
 
@@ -137,6 +140,8 @@
               <p><strong>点击选择</strong> 或拖拽图片到此</p>
               <small>JPG / PNG / WebP / GIF…</small>
             </label>
+            <input type="file" id="img-camera-file" accept="image/*" capture="environment" hidden />
+            <button class="btn btn-secondary full" id="img-camera-pick">拍照导入</button>
           </div>
 
           <div class="card">
@@ -177,7 +182,10 @@
               <img id="img-out-img" class="result-thumb" alt="压缩结果预览" />
               <dl class="result-meta" id="img-out-meta"></dl>
             </div>
-            <button class="btn btn-primary full" id="img-download">保存到 pics/</button>
+            <div class="row result-actions">
+              <button class="btn btn-primary" id="img-download">保存到本机</button>
+              <button class="btn btn-secondary" id="img-upload">上传到服务电脑</button>
+            </div>
           </div>
         </section>
 

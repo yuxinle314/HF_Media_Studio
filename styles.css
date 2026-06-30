@@ -468,6 +468,10 @@ body {
 }
 
 /* ---------------- 结果卡片 ---------------- */
+.result-actions {
+  margin-top: 14px;
+}
+
 .result-body {
   display: flex;
   gap: 16px;

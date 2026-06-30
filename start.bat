@@ -18,6 +18,11 @@ set "MODE=Local"
 set /p "CHOICE=Enter 1 or 2, press Enter for Local mode: "
 if "%CHOICE%"=="2" set "MODE=Lan"
 
+echo.
+echo Login is required.
+echo Username: cuc
+echo Password: ecdav
+
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\serve-local.ps1" -Port 8080 -Mode "%MODE%"
 if errorlevel 1 (
   echo.

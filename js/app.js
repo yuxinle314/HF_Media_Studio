@@ -45,6 +45,38 @@ async function saveOutput(subdir, filename, blob) {
   // cancel: 用户取消选择, 不提示
 }
 
+async function uploadOutput(subdir, filename, blob, btn) {
+  if (!blob) return;
+  const originalText = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "上传中…";
+  }
+
+  try {
+    const params = new URLSearchParams({ subdir, filename });
+    const resp = await fetch(`/api/upload?${params.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "application/octet-stream" },
+      body: blob,
+      cache: "no-store",
+    });
+    const isJson = (resp.headers.get("content-type") || "").includes("application/json");
+    const data = isJson ? await resp.json() : null;
+    if (!resp.ok || !data || !data.ok) {
+      throw new Error(data?.error || `HTTP ${resp.status}`);
+    }
+    toast(`已上传到服务电脑: ${data.path}`);
+  } catch (e) {
+    toast("上传失败: " + (e.message || e));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+}
+
 async function initStorage() {
   const nameEl = $("saveloc-name");
   const btn = $("saveloc-btn");
@@ -95,7 +127,7 @@ function parseRes(val) {
 }
 
 /* 渲染图像压缩结果到指定 DOM */
-function renderImageResult({ imgEl, metaEl, cardEl, dlBtn }, result, originalBytes, baseName) {
+function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, result, originalBytes, baseName) {
   const { blob, width, height, quality, status } = result;
   const url = URL.createObjectURL(blob);
   imgEl.src = url;
@@ -121,8 +153,12 @@ function renderImageResult({ imgEl, metaEl, cardEl, dlBtn }, result, originalByt
   metaEl.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   cardEl.hidden = false;
   // 照片统一保存到 pics/, 文件名带时间戳避免覆盖
-  dlBtn.onclick = () =>
-    saveOutput("pics", `${baseName}_${kb}kb_${width}x${height}_${stamp()}.${ext}`, blob);
+  const filename = `${baseName}_${kb}kb_${width}x${height}_${stamp()}.${ext}`;
+  dlBtn.onclick = () => saveOutput("pics", filename, blob);
+  if (uploadBtn) {
+    uploadBtn.disabled = false;
+    uploadBtn.onclick = () => uploadOutput("pics", filename, blob, uploadBtn);
+  }
 }
 
 /* ============================================================
@@ -144,6 +180,7 @@ function initCamera() {
     metaEl: $("cam-out-meta"),
     cardEl: $("cam-result"),
     dlBtn: $("cam-download"),
+    uploadBtn: $("cam-upload"),
   };
 
   let stream = null;
@@ -234,6 +271,8 @@ function initCamera() {
 function initImageFile() {
   const drop = $("img-drop");
   const fileInput = $("img-file");
+  const cameraFileInput = $("img-camera-file");
+  const cameraPickBtn = $("img-camera-pick");
   const runBtn = $("img-run");
 
   const getSize = bindSegmented("img-size", recompress);
@@ -245,6 +284,7 @@ function initImageFile() {
     metaEl: $("img-out-meta"),
     cardEl: $("img-result"),
     dlBtn: $("img-download"),
+    uploadBtn: $("img-upload"),
   };
 
   let bitmap = null;
@@ -264,6 +304,8 @@ function initImageFile() {
   }
 
   fileInput.addEventListener("change", (e) => setFile(e.target.files[0]));
+  cameraFileInput.addEventListener("change", (e) => setFile(e.target.files[0]));
+  cameraPickBtn.addEventListener("click", () => cameraFileInput.click());
 
   // 拖放
   ["dragenter", "dragover"].forEach((ev) =>
