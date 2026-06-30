@@ -1,10 +1,27 @@
-// 影音工坊 · 主逻辑
+// 短波通信多媒体处理中心 · 主逻辑
 import { formatBytes, downloadBlob, toast, bindSegmented, fmtSeconds, stamp } from "./util.js";
 import { compressToTarget, loadBitmap } from "./image.js";
-import { encodeToCodec2, decodeCodec2ToWav } from "./audio.js";
+import { encodeToCodec2, decodeCodec2ToWav, decodeCodec2ToMp3 } from "./audio.js";
 import { save, supported as fsSupported, restoreBaseDir, chooseBaseDir, currentBaseName } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
+
+/* ============================================================
+   顶部数字时钟
+   ============================================================ */
+function initClock() {
+  const el = $("live-clock");
+  if (!el) return;
+  const pad = (n) => String(n).padStart(2, "0");
+  const render = () => {
+    const d = new Date();
+    el.textContent =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+  render();
+  setInterval(render, 1000);
+}
 
 /* ============================================================
    输出文件夹 (pics / voices)
@@ -55,6 +72,7 @@ async function initStorage() {
 function initTabs() {
   const tabs = document.querySelectorAll(".topbar .seg-item[data-tab]");
   const panels = {
+    speech: $("panel-speech"),
     camera: $("panel-camera"),
     image: $("panel-image"),
     audio: $("panel-audio"),
@@ -303,6 +321,24 @@ function initAudio() {
   const metaEl = $("aud-out-meta");
   const playOutBtn = $("aud-play-out");
   const dlBtn = $("aud-download");
+  const c2Drop = $("c2-drop");
+  const c2FileInput = $("c2-file");
+  const c2RunBtn = $("c2-run");
+  const c2StatusEl = $("c2-status");
+  const c2Progress = $("c2-progress");
+  const c2ProgressBar = c2Progress.querySelector("span");
+  const c2ResultCard = $("c2-result");
+  const c2MetaEl = $("c2-out-meta");
+  const c2PlayBtn = $("c2-play-out");
+  const c2DownloadBtn = $("c2-download");
+  const sttStartBtn = $("stt-start");
+  const sttStopBtn = $("stt-stop");
+  const sttTimeEl = $("stt-time");
+  const sttProgressEl = $("stt-progress");
+  const sttTextEl = $("stt-text");
+  const sttCopyBtn = $("stt-copy");
+  const sttDownloadBtn = $("stt-download");
+  const sttStatusEl = $("stt-status");
 
   const getMode = bindSegmented("aud-mode");
 
@@ -320,14 +356,196 @@ function initAudio() {
   let source = null; // {blob, name, bytes} 待压缩的音频来源
   let resultBlob = null; // 压缩后的 .c2
   let resultName = "voice.c2";
+  let c2Source = null; // {blob, name, bytes} 待转 MP3 的 Codec2 文件
+  let mp3Blob = null;
+  let mp3Name = "voice.mp3";
   let outAudio = new Audio();
   let srcAudio = new Audio();
+  let mp3Audio = new Audio();
+  let speechRecognition = null;
+  let speechActive = false;
+  let speechStartTime = 0;
+  let speechTimer = null;
+  let speechFinalText = "";
+  let speechHadError = false;
 
   function setSource(blob, name) {
     source = { blob, name, bytes: blob.size };
     runBtn.disabled = false;
     playSrcBtn.disabled = false;
     srcAudio.src = URL.createObjectURL(blob);
+  }
+
+  function baseName(name, fallback) {
+    const cleaned = (name || fallback).replace(/\.[^.]+$/, "");
+    return cleaned || fallback;
+  }
+
+  function isC2File(file) {
+    return file && (/\.c2$/i.test(file.name || "") || file.type === "audio/codec2");
+  }
+
+  function setC2Source(file) {
+    if (!file) return;
+    if (!isC2File(file)) return toast("请选择 .c2 文件");
+    c2Source = { blob: file, name: baseName(file.name, "codec2"), bytes: file.size };
+    mp3Blob = null;
+    c2ResultCard.hidden = true;
+    c2RunBtn.disabled = false;
+    c2StatusEl.textContent = "";
+    c2Drop.querySelector("p").innerHTML = `<strong>${file.name || "codec2.c2"}</strong>`;
+    c2Drop.querySelector("small").textContent = `${formatBytes(file.size)} · Codec2`;
+  }
+
+  function setSpeechText(text) {
+    sttTextEl.value = text;
+    const hasText = text.trim().length > 0;
+    sttCopyBtn.disabled = !hasText;
+    sttDownloadBtn.disabled = !hasText;
+  }
+
+  function setSpeechRunning(running) {
+    speechActive = running;
+    sttStartBtn.disabled = running;
+    sttStopBtn.disabled = !running;
+    sttStartBtn.textContent = running ? "识别中…" : "开始识别";
+  }
+
+  function updateSpeechProgress() {
+    const elapsed = performance.now() - speechStartTime;
+    const clamped = Math.min(elapsed, MAX_MS);
+    sttTimeEl.textContent = fmtSeconds(clamped / 1000);
+    sttProgressEl.style.width = (clamped / MAX_MS) * 100 + "%";
+    if (elapsed >= MAX_MS) stopSpeechRecognition("已到 60 秒上限");
+  }
+
+  function stopSpeechRecognition(reason = "识别已停止") {
+    if (speechTimer) clearInterval(speechTimer);
+    speechTimer = null;
+    if (speechRecognition && speechActive) {
+      try { speechRecognition.stop(); } catch {}
+    } else {
+      setSpeechRunning(false);
+    }
+    sttStatusEl.textContent = reason;
+  }
+
+  function startBrowserSpeechRecognition() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      sttStatusEl.textContent = "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。";
+      toast("浏览器不支持语音识别");
+      return;
+    }
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      return toast("请先结束录音");
+    }
+
+    speechRecognition = new Recognition();
+    speechFinalText = "";
+    speechHadError = false;
+    setSpeechText("");
+    sttTimeEl.textContent = "0.0";
+    sttProgressEl.style.width = "0%";
+    sttStatusEl.textContent = "正在监听麦克风…";
+
+    speechRecognition.lang = "zh-CN";
+    speechRecognition.continuous = true;
+    speechRecognition.interimResults = true;
+
+    speechRecognition.onstart = () => {
+      speechStartTime = performance.now();
+      setSpeechRunning(true);
+      speechTimer = setInterval(updateSpeechProgress, 100);
+      updateSpeechProgress();
+    };
+
+    speechRecognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const part = event.results[i][0]?.transcript || "";
+        if (event.results[i].isFinal) {
+          speechFinalText += part.trim() ? part.trim() + "\n" : "";
+        } else {
+          interim += part;
+        }
+      }
+      setSpeechText((speechFinalText + interim).trim());
+    };
+
+    speechRecognition.onerror = (event) => {
+      speechHadError = true;
+      const message = event.error === "not-allowed"
+        ? "麦克风或语音识别权限被拒绝"
+        : "语音识别失败: " + event.error;
+      sttStatusEl.textContent = message;
+      toast(message);
+    };
+
+    speechRecognition.onend = () => {
+      if (speechTimer) clearInterval(speechTimer);
+      speechTimer = null;
+      setSpeechRunning(false);
+      const elapsed = performance.now() - speechStartTime;
+      const clamped = Math.min(elapsed, MAX_MS);
+      sttTimeEl.textContent = fmtSeconds(clamped / 1000);
+      sttProgressEl.style.width = (clamped / MAX_MS) * 100 + "%";
+      if (speechHadError) {
+        return;
+      }
+      if (!sttTextEl.value.trim()) {
+        sttStatusEl.textContent = "未识别到文字，请靠近麦克风再试。";
+      } else if (sttTextEl.value.trim()) {
+        sttStatusEl.textContent = elapsed >= MAX_MS ? "已到 60 秒上限" : "识别完成";
+      }
+    };
+
+    try {
+      speechRecognition.start();
+    } catch (e) {
+      sttStatusEl.textContent = "无法启动语音识别: " + (e.message || e);
+      setSpeechRunning(false);
+    }
+  }
+
+  function initSpeechToText() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      sttStartBtn.disabled = true;
+      sttStopBtn.disabled = true;
+      sttStatusEl.textContent = "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。";
+      return;
+    }
+
+    sttStatusEl.textContent = "准备就绪，最长识别 60 秒。";
+
+    sttTextEl.addEventListener("input", () => setSpeechText(sttTextEl.value));
+
+    sttStartBtn.addEventListener("click", () => {
+      startBrowserSpeechRecognition();
+    });
+
+    sttStopBtn.addEventListener("click", () => stopSpeechRecognition());
+
+    sttCopyBtn.addEventListener("click", async () => {
+      const text = sttTextEl.value.trim();
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("已复制识别文字");
+      } catch {
+        sttTextEl.select();
+        document.execCommand("copy");
+        toast("已复制识别文字");
+      }
+    });
+
+    sttDownloadBtn.addEventListener("click", () => {
+      const text = sttTextEl.value.trim();
+      if (!text) return;
+      const blob = new Blob([text + "\n"], { type: "text/plain;charset=utf-8" });
+      saveOutput("voices", `speech_text_${stamp()}.txt`, blob);
+    });
   }
 
   /* ---- 录音 ---- */
@@ -338,6 +556,7 @@ function initAudio() {
 
   async function startRec() {
     if (starting || (mediaRecorder && mediaRecorder.state === "recording")) return;
+    if (speechActive) return toast("请先停止语音转文字");
     starting = true;
     try {
       recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -467,6 +686,22 @@ function initAudio() {
     }
   });
 
+  /* ---- .c2 转 MP3 文件选择 ---- */
+  c2FileInput.addEventListener("change", (e) => setC2Source(e.target.files[0]));
+  ["dragenter", "dragover"].forEach((ev) =>
+    c2Drop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      c2Drop.classList.add("dragover");
+    })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    c2Drop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      c2Drop.classList.remove("dragover");
+    })
+  );
+  c2Drop.addEventListener("drop", (e) => setC2Source(e.dataTransfer.files[0]));
+
   /* ---- 压缩 ---- */
   runBtn.addEventListener("click", async () => {
     if (!source) return;
@@ -522,11 +757,68 @@ function initAudio() {
   });
 
   dlBtn.addEventListener("click", () => resultBlob && saveOutput("voices", resultName, resultBlob));
+
+  /* ---- .c2 转 MP3 ---- */
+  c2RunBtn.addEventListener("click", async () => {
+    if (!c2Source) return;
+    c2RunBtn.disabled = true;
+    c2RunBtn.textContent = "转码中…";
+    c2Progress.hidden = false;
+    c2ProgressBar.style.width = "5%";
+    c2StatusEl.textContent = "首次使用会从 CDN 加载声码器内核 (约 10MB), 请稍候…";
+    try {
+      mp3Blob = await decodeCodec2ToMp3(c2Source.blob, (r) => {
+        c2ProgressBar.style.width = Math.max(5, Math.round(r * 100)) + "%";
+      });
+      c2ProgressBar.style.width = "100%";
+      mp3Name = `${c2Source.name || "voice"}_mp3_${stamp()}.mp3`;
+
+      c2MetaEl.innerHTML = [
+        ["原始 .c2", formatBytes(c2Source.bytes)],
+        ["输出 MP3", `<strong>${formatBytes(mp3Blob.size)}</strong>`],
+        ["体积变化", `${(mp3Blob.size / c2Source.bytes).toFixed(1)}×`],
+        ["格式", "MP3 · 16 kHz · 单声道"],
+      ]
+        .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
+        .join("");
+      c2ResultCard.hidden = false;
+      c2StatusEl.textContent = "完成 ✓";
+      toast("MP3 转码完成");
+    } catch (e) {
+      c2StatusEl.textContent = "失败: " + (e.message || e);
+      toast("MP3 转码失败");
+    } finally {
+      c2Progress.hidden = true;
+      c2ProgressBar.style.width = "0%";
+      c2RunBtn.disabled = false;
+      c2RunBtn.textContent = "转码成 MP3";
+    }
+  });
+
+  c2PlayBtn.addEventListener("click", async () => {
+    if (!mp3Blob) return;
+    c2PlayBtn.disabled = true;
+    c2PlayBtn.textContent = "载入中…";
+    try {
+      mp3Audio.src = URL.createObjectURL(mp3Blob);
+      await mp3Audio.play();
+    } catch (e) {
+      toast("试听失败: " + (e.message || e));
+    } finally {
+      c2PlayBtn.disabled = false;
+      c2PlayBtn.textContent = "▶ 试听 MP3";
+    }
+  });
+
+  c2DownloadBtn.addEventListener("click", () => mp3Blob && saveOutput("voices", mp3Name, mp3Blob));
+
+  initSpeechToText();
 }
 
 /* ============================================================
    启动
    ============================================================ */
+initClock();
 initTabs();
 initStorage();
 initCamera();

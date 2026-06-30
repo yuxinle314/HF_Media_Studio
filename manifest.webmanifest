@@ -1,7 +1,8 @@
 {
-  "name": "影音工坊 · Media Studio",
-  "short_name": "影音工坊",
-  "description": "拍照压缩、图片瘦身与 Codec2 语音声码器，纯本地处理。",
+  "name": "短波通信多媒体处理中心",
+  "short_name": "短波处理中心",
+  "version": "1.2.0",
+  "description": "中国传媒大学广播电视智能化教育部工程研究中心：拍照压缩、图片瘦身、Codec2 声码器与语音转文字。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

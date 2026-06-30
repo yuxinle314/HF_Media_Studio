@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-    <title>影音工坊 · Media Studio</title>
+    <title>短波通信多媒体处理中心</title>
+    <meta name="application-version" content="1.2.0" />
+    <meta name="author" content="中国传媒大学 广播电视智能化教育部工程研究中心" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon.svg" />
@@ -20,10 +22,16 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <h1 class="app-title">影音工坊</h1>
-        <p class="app-subtitle">拍照压缩 · 图片瘦身 · 语音声码器</p>
+        <h1 class="app-title">短波通信多媒体处理中心</h1>
+        <p class="app-version">
+          <span>v1.2.0</span>
+          <span>更新 2026-06-30</span>
+          <span>压缩转码本地处理</span>
+          <span class="app-clock" id="live-clock" aria-label="当前时间">0000-00-00 00:00:00</span>
+        </p>
         <nav class="segmented" role="tablist" aria-label="功能">
-          <button class="seg-item is-active" role="tab" data-tab="camera">拍照</button>
+          <button class="seg-item is-active" role="tab" data-tab="speech">转文字</button>
+          <button class="seg-item" role="tab" data-tab="camera">拍照</button>
           <button class="seg-item" role="tab" data-tab="image">图片</button>
           <button class="seg-item" role="tab" data-tab="audio">音频</button>
           <span class="seg-indicator" aria-hidden="true"></span>
@@ -31,8 +39,35 @@
       </header>
 
       <main class="content">
+        <!-- ============ 语音转文字 ============ -->
+        <section class="panel is-active" id="panel-speech" role="tabpanel">
+          <div class="card">
+            <h2>语音转文字</h2>
+            <div class="speech-box">
+              <div class="row">
+                <button class="btn btn-primary" id="stt-start">开始识别</button>
+                <button class="btn btn-secondary" id="stt-stop" disabled>停止</button>
+              </div>
+              <div class="rec-time compact"><span id="stt-time">0.0</span><small>/ 60.0 s</small></div>
+              <div class="rec-progress"><span id="stt-progress"></span></div>
+              <textarea
+                id="stt-text"
+                class="transcript"
+                rows="5"
+                placeholder="识别结果会显示在这里"
+              ></textarea>
+              <div class="row">
+                <button class="btn btn-secondary" id="stt-copy" disabled>复制文字</button>
+                <button class="btn btn-primary" id="stt-download" disabled>保存到 voices/</button>
+              </div>
+              <p class="hint">使用浏览器语音识别能力，最长 60 秒；适合实时麦克风口述，不支持直接识别已选音频文件。</p>
+              <p class="status" id="stt-status"></p>
+            </div>
+          </div>
+        </section>
+
         <!-- ============ 拍照 ============ -->
-        <section class="panel is-active" id="panel-camera" role="tabpanel">
+        <section class="panel" id="panel-camera" role="tabpanel">
           <div class="card">
             <div class="card-head">
               <h2>摄像头拍照</h2>
@@ -195,15 +230,40 @@
               <button class="btn btn-primary" id="aud-download">保存到 voices/</button>
             </div>
           </div>
+
+          <div class="card">
+            <h2>Codec2 转 MP3</h2>
+            <label class="dropzone slim" id="c2-drop">
+              <input type="file" id="c2-file" accept=".c2,audio/codec2" hidden />
+              <div class="vf-icon">🎧</div>
+              <p><strong>点击选择</strong> 或拖拽 .c2 文件到此</p>
+              <small>把 Codec2 语音转成普通播放器可播放的 MP3</small>
+            </label>
+            <button class="btn btn-primary full" id="c2-run" disabled>转码成 MP3</button>
+            <p class="hint">输出为 16&nbsp;kHz 单声道 MP3，保存到 <code>voices/</code></p>
+            <div class="progress" id="c2-progress" hidden><span></span></div>
+            <p class="status" id="c2-status"></p>
+          </div>
+
+          <div class="card result-card" id="c2-result" hidden>
+            <h2>MP3 转码结果</h2>
+            <dl class="result-meta" id="c2-out-meta"></dl>
+            <div class="row">
+              <button class="btn btn-secondary" id="c2-play-out">▶ 试听 MP3</button>
+              <button class="btn btn-primary" id="c2-download">保存到 voices/</button>
+            </div>
+          </div>
         </section>
       </main>
 
       <footer class="footer">
+        <p class="footer-org">中国传媒大学 广播电视智能化教育部工程研究中心</p>
+        <p class="footer-meta">短波通信多媒体处理中心 v1.2.0 · 更新时间 2026-06-30</p>
         <p class="saveloc">
           输出文件夹：<strong id="saveloc-name">浏览器下载</strong>
           <button class="linkbtn" id="saveloc-btn" hidden>选择文件夹…</button>
         </p>
-        <p>照片存入 <code>pics/</code>，音频存入 <code>voices/</code> · 纯本地处理，数据不上传 · 摄像头/麦克风需在 HTTPS 或 localhost 下授权</p>
+        <p>照片存入 <code>pics/</code>，音频存入 <code>voices/</code> · 压缩转码本地处理，语音识别由浏览器能力提供 · 摄像头/麦克风需在 HTTPS 或 localhost 下授权</p>
       </footer>
     </div>
 

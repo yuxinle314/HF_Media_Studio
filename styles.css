@@ -1,13 +1,21 @@
 /* ============================================================
-   影音工坊 · Apple HIG 风格样式
+   短波通信多媒体处理中心 · Apple HIG 风格样式
    设计语言参考: iOS / macOS — SF 字体栈, 系统色, 分段控件,
    毛玻璃卡片, 大圆角, 自适应深浅色.
    ============================================================ */
 
 :root {
-  --sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-    "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial,
-    sans-serif;
+  --font-text: "HarmonyOS Sans SC", "MiSans", "PingFang SC",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-display: "PingFang SC", "Microsoft YaHei UI Light",
+    "Microsoft YaHei UI", "HarmonyOS Sans SC", "MiSans", "Noto Sans SC",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-number: "Bahnschrift", "DIN Alternate", "SF Pro Display",
+    "Segoe UI", var(--font-text);
+  --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, Menlo,
+    monospace;
 
   /* 系统强调色 (iOS Blue) */
   --accent: #007aff;
@@ -21,6 +29,8 @@
   --text: #1c1c1e;
   --text-2: #3c3c43;
   --text-3: rgba(60, 60, 67, 0.6);
+  --title: #264766;
+  --title-soft: #0a84ff;
   --separator: rgba(60, 60, 67, 0.18);
   --fill: rgba(120, 120, 128, 0.12);
   --fill-strong: rgba(120, 120, 128, 0.2);
@@ -42,6 +52,8 @@
     --text: #ffffff;
     --text-2: #ebebf5;
     --text-3: rgba(235, 235, 245, 0.6);
+    --title: #dbeafe;
+    --title-soft: #64d2ff;
     --separator: rgba(84, 84, 88, 0.6);
     --fill: rgba(120, 120, 128, 0.24);
     --fill-strong: rgba(120, 120, 128, 0.36);
@@ -50,6 +62,10 @@
     --green: #30d158;
     --orange: #ff9f0a;
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .app-title {
+    text-shadow: 0 1px 12px rgba(100, 210, 255, 0.16);
   }
 }
 
@@ -65,12 +81,15 @@ body {
 }
 
 body {
-  font-family: var(--sf);
+  font-family: var(--font-text);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  line-height: 1.4;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
   /* 柔和的背景光晕, Apple 风格 */
   background-image: radial-gradient(
       120% 80% at 50% -10%,
@@ -99,16 +118,71 @@ body {
 }
 
 .app-title {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.22;
+  letter-spacing: 0;
   margin: 0;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--title);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+.app-title::after {
+  content: "";
+  display: block;
+  width: 84px;
+  height: 2px;
+  margin: 9px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--title-soft), transparent);
+  opacity: 0.68;
+}
+
+.app-org {
+  margin: 8px auto 0;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .app-subtitle {
-  margin: 2px 0 16px;
+  margin: 4px 0 0;
   color: var(--text-3);
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.app-version {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 8px;
+  margin: 10px 0 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.app-version span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--fill);
+}
+
+.app-version .app-clock {
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+  min-width: 164px;
+  white-space: nowrap;
 }
 
 /* ---------------- 分段控件 ---------------- */
@@ -141,7 +215,8 @@ body {
   color: var(--text);
   font-family: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 650;
+  line-height: 1.25;
   padding: 8px 12px;
   border-radius: 9px;
   cursor: pointer;
@@ -152,6 +227,7 @@ body {
 .segmented.small .seg-item {
   flex: 0 1 auto;
   font-size: 13px;
+  font-weight: 650;
   padding: 7px 14px;
 }
 
@@ -182,10 +258,12 @@ body {
 }
 
 .card h2 {
-  font-size: 17px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.35;
   margin: 0 0 14px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .card-head {
@@ -207,13 +285,15 @@ body {
 .field > label {
   display: block;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.35;
   color: var(--text-3);
   margin-bottom: 8px;
 }
 
 .hint {
   font-size: 12px;
+  line-height: 1.55;
   color: var(--text-3);
   margin: 12px 0 0;
 }
@@ -244,8 +324,9 @@ body {
   appearance: none;
   border: 0;
   font-family: inherit;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
   padding: 12px 20px;
   border-radius: 13px;
   cursor: pointer;
@@ -296,6 +377,8 @@ body {
 .select {
   font-family: inherit;
   font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
   color: var(--text);
   background: var(--fill);
   border: 0;
@@ -330,6 +413,7 @@ body {
   justify-content: center;
   color: rgba(255, 255, 255, 0.6);
   gap: 6px;
+  font-weight: 600;
 }
 
 .vf-icon {
@@ -349,7 +433,17 @@ body {
   border-radius: 14px;
   cursor: pointer;
   color: var(--text-2);
+  line-height: 1.45;
   transition: border-color 0.2s, background 0.2s;
+}
+
+.dropzone p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.dropzone strong {
+  font-weight: 750;
 }
 
 .dropzone.slim {
@@ -365,6 +459,12 @@ body {
 .dropzone small {
   color: var(--text-3);
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.dropzone + .btn.full {
+  margin-top: 12px;
 }
 
 /* ---------------- 结果卡片 ---------------- */
@@ -391,16 +491,17 @@ body {
   grid-template-columns: auto 1fr;
   gap: 6px 14px;
   font-size: 14px;
+  line-height: 1.45;
 }
 
 .result-meta dt {
   color: var(--text-3);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .result-meta dd {
   margin: 0;
-  font-weight: 600;
+  font-weight: 700;
   text-align: right;
 }
 
@@ -446,19 +547,56 @@ body {
 
 .rec-time {
   text-align: center;
+  font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 
 .rec-time span {
   font-size: 40px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .rec-time small {
   color: var(--text-3);
   font-size: 15px;
   margin-left: 6px;
+}
+
+.rec-time.compact span {
+  font-size: 28px;
+}
+
+.speech-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.transcript {
+  width: 100%;
+  min-height: 132px;
+  resize: vertical;
+  border: 1px solid var(--separator);
+  border-radius: 14px;
+  background: var(--fill);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+  padding: 12px 14px;
+  outline: none;
+}
+
+.transcript:focus {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--fill) 70%, var(--accent) 8%);
+}
+
+.transcript::placeholder {
+  color: var(--text-3);
 }
 
 /* 按住录音进度条 (60s = 100%) */
@@ -518,6 +656,8 @@ body {
 
 .status {
   font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
   color: var(--text-3);
   margin: 10px 0 0;
   min-height: 1em;
@@ -528,11 +668,27 @@ body {
   text-align: center;
   color: var(--text-3);
   font-size: 12px;
+  line-height: 1.55;
   margin-top: 24px;
 }
 
+.footer-org {
+  margin: 0 0 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.footer-meta {
+  margin: 0 0 12px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .footer code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   background: var(--fill);
   padding: 1px 5px;
   border-radius: 5px;
@@ -540,6 +696,7 @@ body {
 
 .saveloc {
   font-size: 13px;
+  line-height: 1.45;
   color: var(--text-2);
 }
 
@@ -573,7 +730,8 @@ body {
   padding: 12px 20px;
   border-radius: 14px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.45;
   z-index: 100;
   opacity: 0;
   transition: opacity 0.3s, transform 0.3s;
@@ -585,4 +743,23 @@ body {
 .toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 430px) {
+  .app-title {
+    font-size: 24px;
+    line-height: 1.28;
+  }
+
+  .app-org {
+    font-size: 12px;
+  }
+
+  .app-subtitle {
+    font-size: 13px;
+  }
+
+  .app-version {
+    font-size: 11px;
+  }
 }

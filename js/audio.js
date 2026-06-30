@@ -114,6 +114,45 @@ export async function decodeCodec2ToWav(c2, onProgress) {
   }
 }
 
+/**
+ * 把 .c2 转码成普通播放器可播放的 MP3.
+ * @param {Blob|File} c2 Codec2 音频
+ * @param {(ratio:number)=>void} [onProgress]
+ * @returns {Promise<Blob>} audio/mpeg
+ */
+export async function decodeCodec2ToMp3(c2, onProgress) {
+  const ff = await getFFmpeg(onProgress);
+  const inName = "mp3_" + Date.now() + ".c2";
+  const outName = "out.mp3";
+  ff.FS("writeFile", inName, await ff._fetchFile(c2));
+  try {
+    try {
+      await ff.run(
+        "-i", inName,
+        "-ar", "16000",
+        "-ac", "1",
+        "-c:a", "libmp3lame",
+        "-b:a", "32k",
+        outName
+      );
+    } catch (e) {
+      try { ff.FS("unlink", outName); } catch {}
+      await ff.run(
+        "-i", inName,
+        "-ar", "16000",
+        "-ac", "1",
+        "-b:a", "32k",
+        outName
+      );
+    }
+    const data = ff.FS("readFile", outName);
+    return toBlob(data, "audio/mpeg");
+  } finally {
+    try { ff.FS("unlink", inName); } catch {}
+    try { ff.FS("unlink", outName); } catch {}
+  }
+}
+
 /** 预热 (可选): 提前加载 ffmpeg 以减少首次压缩等待 */
 export function warmup(onProgress) {
   return getFFmpeg(onProgress).catch(() => {});
