@@ -31,11 +31,21 @@
 
 ### 一键启动（Windows）
 
-在项目目录双击 `start.bat` 即可启动本地服务，脚本会自动打开浏览器：
+在项目目录双击 `start.bat` 即可启动本地服务。启动时可选择：
+
+- **本机模式**：只允许当前电脑访问，默认打开：
 
 ```text
 http://127.0.0.1:8080/
 ```
+
+- **局域网模式**：允许同一交换机 / 路由器下的其它设备访问。脚本会显示本机局域网地址，例如：
+
+```text
+http://192.168.1.23:8080/
+```
+
+如果其它设备无法打开，请在 Windows 防火墙中允许该端口入站访问。局域网设备通过 `http://192.168.x.x:8080` 访问时，页面可以打开，但摄像头、麦克风、ffmpeg.wasm 等能力可能因浏览器安全策略要求 HTTPS 而受限。
 
 如果 8080 已被占用，脚本会自动顺延使用 8081、8082 等空闲端口，并在窗口中显示实际地址。
 
@@ -47,6 +57,16 @@ http://127.0.0.1:8080/
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\serve-local.ps1 -Port 8081
+```
+
+命令行也可直接指定访问模式：
+
+```powershell
+# 本机模式
+powershell -ExecutionPolicy Bypass -File .\scripts\serve-local.ps1 -Port 8080 -Mode Local
+
+# 局域网模式
+powershell -ExecutionPolicy Bypass -File .\scripts\serve-local.ps1 -Port 8080 -Mode Lan
 ```
 
 ### 命令行启动

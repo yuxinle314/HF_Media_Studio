@@ -1,5 +1,7 @@
 param(
   [int]$Port = 8080,
+  [ValidateSet("Local", "Lan")]
+  [string]$Mode = "Local",
   [switch]$NoBrowser
 )
 
@@ -7,7 +9,31 @@ $ErrorActionPreference = "Stop"
 
 $Root = [System.IO.Path]::GetFullPath((Resolve-Path (Join-Path $PSScriptRoot "..")).Path)
 $RootWithSlash = $Root.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-$Address = [System.Net.IPAddress]::Parse("127.0.0.1")
+$IsLanMode = $Mode -ieq "Lan"
+$Address = if ($IsLanMode) {
+  [System.Net.IPAddress]::Any
+} else {
+  [System.Net.IPAddress]::Parse("127.0.0.1")
+}
+
+function Get-LanUrls {
+  param([int]$Port)
+
+  try {
+    $HostName = [System.Net.Dns]::GetHostName()
+    $Addresses = [System.Net.Dns]::GetHostEntry($HostName).AddressList
+    $Addresses |
+      Where-Object {
+        $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+        -not [System.Net.IPAddress]::IsLoopback($_) -and
+        -not $_.IPAddressToString.StartsWith("169.254.")
+      } |
+      ForEach-Object { "http://$($_.IPAddressToString):$Port/" } |
+      Select-Object -Unique
+  } catch {
+    @()
+  }
+}
 
 function Get-ContentType {
   param([string]$Path)
@@ -152,20 +178,34 @@ if ($null -eq $Listener) {
   exit 1
 }
 
-$Url = "http://127.0.0.1:$Port/"
+$LocalUrl = "http://127.0.0.1:$Port/"
+$LanUrls = if ($IsLanMode) { @(Get-LanUrls -Port $Port) } else { @() }
 
 Write-Host ""
 Write-Host "HF Media Studio local server"
 Write-Host "Root: $Root"
+Write-Host "Mode: $(if ($IsLanMode) { "LAN (same-network devices)" } else { "Local (this computer only)" })"
 if ($Port -ne $RequestedPort) {
   Write-Host "Port $RequestedPort is busy; using port $Port instead."
 }
-Write-Host "URL : $Url"
+Write-Host "Local URL: $LocalUrl"
+if ($IsLanMode) {
+  if ($LanUrls.Count -gt 0) {
+    Write-Host "LAN URLs:"
+    foreach ($LanUrl in $LanUrls) {
+      Write-Host "  $LanUrl"
+    }
+  } else {
+    Write-Host "LAN URL: no non-loopback IPv4 address was detected."
+  }
+  Write-Host "Allow this port in Windows Firewall if other devices cannot connect."
+  Write-Host "Camera, microphone, and ffmpeg features may require HTTPS on remote devices."
+}
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
 if (-not $NoBrowser) {
-  Start-Process $Url
+  Start-Process $LocalUrl
 }
 
 try {
