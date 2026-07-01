@@ -488,6 +488,15 @@ body {
   flex-shrink: 0;
 }
 
+.result-video {
+  width: min(260px, 46vw);
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #000;
+  flex-shrink: 0;
+}
+
 .result-meta {
   margin: 0;
   flex: 1;
@@ -791,5 +800,13 @@ body {
 
   .app-version {
     font-size: 11px;
+  }
+
+  .video-result-body {
+    flex-direction: column;
+  }
+
+  .result-video {
+    width: 100%;
   }
 }

@@ -5,6 +5,8 @@ import { encodeToCodec2, decodeCodec2ToWav, decodeCodec2ToMp3 } from "./audio.js
 import { save, supported as fsSupported, restoreBaseDir, chooseBaseDir, currentBaseName } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
+const DECIMAL_KB = 1000;
+const TRANSFER_LIMIT_BYTES = 256000;
 
 /* ============================================================
    顶部数字时钟
@@ -47,6 +49,11 @@ async function saveOutput(subdir, filename, blob) {
 
 async function uploadOutput(subdir, filename, blob, btn) {
   if (!blob) return;
+  if (blob.size > TRANSFER_LIMIT_BYTES) {
+    toast(`上传失败: 文件超过 ${formatBytes(TRANSFER_LIMIT_BYTES)}`);
+    return;
+  }
+
   const originalText = btn ? btn.textContent : "";
   if (btn) {
     btn.disabled = true;
@@ -107,6 +114,7 @@ function initTabs() {
     speech: $("panel-speech"),
     camera: $("panel-camera"),
     image: $("panel-image"),
+    video: $("panel-video"),
     audio: $("panel-audio"),
   };
   tabs.forEach((tab) => {
@@ -133,7 +141,7 @@ function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, result, 
   imgEl.src = url;
 
   const ext = blob.type === "image/webp" ? "webp" : "jpg";
-  const kb = Math.round(blob.size / 1024);
+  const kb = Math.round(blob.size / DECIMAL_KB);
 
   const ok = status === "ok";
   const badge = ok
@@ -237,10 +245,11 @@ function initCamera() {
 
   async function recompress() {
     if (!lastShot) return;
-    const targetBytes = Number(getSize()) * 1024;
+    const targetBytes = Number(getSize()) * DECIMAL_KB;
     const result = await compressToTarget(lastShot, {
       targetBytes,
       tolerance: 0.2,
+      maxBytes: TRANSFER_LIMIT_BYTES,
       type: getFmt(),
       resolution: parseRes(getRes()),
     });
@@ -324,10 +333,11 @@ function initImageFile() {
 
   async function recompress() {
     if (!bitmap) return;
-    const targetBytes = Number(getSize()) * 1024;
+    const targetBytes = Number(getSize()) * DECIMAL_KB;
     const result = await compressToTarget(bitmap, {
       targetBytes,
       tolerance: 0.2,
+      maxBytes: TRANSFER_LIMIT_BYTES,
       type: getFmt(),
       resolution: parseRes(getRes()),
     });
@@ -341,6 +351,205 @@ function initImageFile() {
     await recompress();
     runBtn.disabled = false;
     runBtn.textContent = "开始压缩";
+  });
+}
+
+/* ============================================================
+   视频: 上传到服务电脑转码压缩
+   ============================================================ */
+function initVideo() {
+  const VIDEO_TARGETS_KB = {
+    "640x480": 256,
+    "320x240": 256,
+  };
+  const drop = $("vid-drop");
+  const fileInput = $("vid-file");
+  const runBtn = $("vid-run");
+  const statusEl = $("vid-status");
+  const progress = $("vid-progress");
+  const progressBar = progress.querySelector("span");
+  const resultCard = $("vid-result");
+  const videoEl = $("vid-out-video");
+  const metaEl = $("vid-out-meta");
+  const downloadBtn = $("vid-download");
+  const copyLinkBtn = $("vid-copy-link");
+
+  const getFps = bindSegmented("vid-fps");
+  const getSize = bindSegmented("vid-size");
+
+  let sourceFile = null;
+  let resultUrl = "";
+  let resultName = "";
+
+  function setProgress(percent) {
+    progress.hidden = false;
+    progressBar.style.width = Math.max(0, Math.min(100, percent)) + "%";
+  }
+
+  function cleanBaseName(name) {
+    const base = (name || "video").replace(/\.[^.]+$/, "").trim();
+    return base || "video";
+  }
+
+  function getSelectedSize() {
+    const key = getSize() || "320x240";
+    const [width, height] = key.split("x").map((value) => parseInt(value, 10));
+    return {
+      width: Number.isFinite(width) ? width : 320,
+      height: Number.isFinite(height) ? height : 240,
+      targetKb: VIDEO_TARGETS_KB[key] || 256,
+    };
+  }
+
+  function formatTargetSize(bytes) {
+    const kb = Math.round((bytes || 0) / DECIMAL_KB);
+    if (kb >= 1000 && kb % 1000 === 0) return `${kb / 1000}MB`;
+    return `${kb}kB`;
+  }
+
+  function setVideoFile(file) {
+    if (!file) return;
+    const looksLikeVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(file.name || "");
+    if (!looksLikeVideo) return toast("请选择视频文件");
+    sourceFile = file;
+    resultCard.hidden = true;
+    resultUrl = "";
+    resultName = "";
+    runBtn.disabled = false;
+    statusEl.textContent = "";
+    progress.hidden = true;
+    progressBar.style.width = "0%";
+    drop.querySelector("p").innerHTML = `<strong>${file.name || "video"}</strong>`;
+    drop.querySelector("small").textContent = formatBytes(file.size);
+  }
+
+  function postVideoForTranscode(file) {
+    return new Promise((resolve, reject) => {
+      const size = getSelectedSize();
+      const params = new URLSearchParams({
+        filename: file.name || "video.mp4",
+        fps: getFps(),
+        seconds: "20",
+        maxw: String(size.width),
+        maxh: String(size.height),
+        targetkb: String(size.targetKb),
+      });
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/video/transcode?${params.toString()}`);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const uploadRatio = event.loaded / event.total;
+        setProgress(5 + uploadRatio * 45);
+        statusEl.textContent = `正在上传到服务电脑… ${Math.round(uploadRatio * 100)}%`;
+      };
+      xhr.upload.onload = () => {
+        setProgress(65);
+        statusEl.textContent = "上传完成，服务电脑正在转码…";
+      };
+      xhr.onerror = () => reject(new Error("无法连接服务电脑"));
+      xhr.onload = () => {
+        let data = null;
+        try {
+          data = JSON.parse(xhr.responseText || "{}");
+        } catch {
+          reject(new Error("服务端返回格式错误"));
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300 || !data.ok) {
+          reject(new Error(data?.error || `HTTP ${xhr.status}`));
+          return;
+        }
+        resolve(data);
+      };
+      xhr.send(file);
+    });
+  }
+
+  fileInput.addEventListener("change", (e) => setVideoFile(e.target.files[0]));
+  ["dragenter", "dragover"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      drop.classList.add("dragover");
+    })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      drop.classList.remove("dragover");
+    })
+  );
+  drop.addEventListener("drop", (e) => setVideoFile(e.dataTransfer.files[0]));
+
+  runBtn.addEventListener("click", async () => {
+    if (!sourceFile) return;
+    runBtn.disabled = true;
+    runBtn.textContent = "处理中…";
+    resultCard.hidden = true;
+    setProgress(5);
+    statusEl.textContent = "准备上传视频…";
+
+    try {
+      const data = await postVideoForTranscode(sourceFile);
+      setProgress(100);
+      resultUrl = data.url;
+      resultName = data.filename || `${cleanBaseName(sourceFile.name)}_compressed.mp4`;
+      videoEl.src = resultUrl;
+      const selectedSize = getSelectedSize();
+      const targetLabel = formatTargetSize(data.targetBytes || selectedSize.targetKb * DECIMAL_KB);
+      metaEl.innerHTML = [
+        ["原始大小", formatBytes(data.inputBytes || sourceFile.size)],
+        ["输出大小", `<strong>${formatBytes(data.bytes || 0)}</strong>`],
+        ["压缩比", data.bytes ? `${((data.inputBytes || sourceFile.size) / data.bytes).toFixed(1)}×` : "-"],
+        ["目标大小", targetLabel],
+        ["参数", `${data.seconds || 20}s · ${data.fps || getFps()} FPS · ≤${data.maxWidth || selectedSize.width}×${data.maxHeight || selectedSize.height}`],
+        ["视频编码", data.codec || "H.265/HEVC 优先"],
+        ["音频", "已移除"],
+        ["状态", data.underTarget ? `<span class="badge ok">${targetLabel} 内</span>` : `<span class="badge warn">超过 ${targetLabel}</span>`],
+      ]
+        .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
+        .join("");
+      resultCard.hidden = false;
+      statusEl.textContent = `完成，已保存到服务电脑: ${data.path}`;
+      toast("视频压缩完成");
+    } catch (e) {
+      statusEl.textContent = "失败: " + (e.message || e);
+      toast("视频压缩失败");
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = "上传并压缩";
+      setTimeout(() => {
+        if (!resultCard.hidden) progress.hidden = true;
+      }, 600);
+    }
+  });
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!resultUrl) return;
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = "下载中…";
+    try {
+      const resp = await fetch(resultUrl, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      downloadBlob(blob, resultName || "compressed.mp4");
+    } catch (e) {
+      toast("下载失败: " + (e.message || e));
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = "下载到本机";
+    }
+  });
+
+  copyLinkBtn.addEventListener("click", async () => {
+    if (!resultUrl) return;
+    const href = new URL(resultUrl, window.location.href).href;
+    try {
+      await navigator.clipboard.writeText(href);
+      toast("已复制视频链接");
+    } catch {
+      toast("复制失败");
+    }
   });
 }
 
@@ -946,4 +1155,5 @@ initTabs();
 initStorage();
 initCamera();
 initImageFile();
+initVideo();
 initAudio();

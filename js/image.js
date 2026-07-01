@@ -1,6 +1,6 @@
 // 图像压缩引擎
 // 思路: 在 Canvas 上把图像缩放到目标分辨率, 再对 JPEG/WebP 质量做二分搜索,
-// 使输出字节数落在 [target*(1-tol), target*(1+tol)] 区间内.
+// 使输出字节数落在 [target*(1-tol), target*(1+tol)] 区间内, 并可设置硬上限.
 // 若某分辨率即便最低质量仍超标 -> 自动降到更小的预设分辨率重试.
 
 /** 预设分辨率, 从大到小排列 (自动模式按此顺序尝试) */
@@ -55,8 +55,8 @@ function encode(canvas, type, quality) {
  * 对单个 canvas 做质量二分, 返回最接近目标的结果.
  * @returns {{blob:Blob, quality:number, status:'ok'|'tooBig'|'tooSmall'}}
  */
-async function searchQuality(canvas, type, target, tol) {
-  const upper = target * (1 + tol);
+async function searchQuality(canvas, type, target, tol, maxBytes = Infinity) {
+  const upper = Math.min(target * (1 + tol), maxBytes);
   const lower = target * (1 - tol);
 
   // 边界探测: 最低质量仍超上限 -> 该分辨率太大
@@ -75,6 +75,7 @@ async function searchQuality(canvas, type, target, tol) {
   let hi = QUALITY_MAX;
   let best = { blob: maxBlob, quality: QUALITY_MAX };
   let bestDist = Math.abs(maxBlob.size - target);
+  let bestUnderUpper = minBlob.size <= upper ? { blob: minBlob, quality: QUALITY_MIN } : null;
 
   for (let i = 0; i < SEARCH_ITERS; i++) {
     const mid = (lo + hi) / 2;
@@ -84,12 +85,19 @@ async function searchQuality(canvas, type, target, tol) {
       bestDist = dist;
       best = { blob, quality: mid };
     }
+    if (blob.size <= upper) {
+      const underDist = Math.abs(blob.size - target);
+      if (!bestUnderUpper || underDist < Math.abs(bestUnderUpper.blob.size - target)) {
+        bestUnderUpper = { blob, quality: mid };
+      }
+    }
     if (blob.size > target) hi = mid;
     else lo = mid;
   }
 
-  const ok = best.blob.size <= upper && best.blob.size >= lower;
-  return { ...best, status: ok ? "ok" : best.blob.size > upper ? "tooBig" : "tooSmall" };
+  const chosen = best.blob.size <= upper ? best : bestUnderUpper || best;
+  const ok = chosen.blob.size <= upper && chosen.blob.size >= lower;
+  return { ...chosen, status: ok ? "ok" : chosen.blob.size > upper ? "tooBig" : "tooSmall" };
 }
 
 /**
@@ -98,12 +106,13 @@ async function searchQuality(canvas, type, target, tol) {
  * @param {object} opts
  * @param {number} opts.targetBytes   目标字节
  * @param {number} [opts.tolerance]   抖动比例 (默认 0.2)
+ * @param {number} [opts.maxBytes]    输出硬上限
  * @param {string} [opts.type]        'image/jpeg' | 'image/webp'
  * @param {{w:number,h:number}|null} [opts.resolution]  指定分辨率盒; null=自动
  * @returns {Promise<{blob:Blob,width:number,height:number,quality:number,status:string}>}
  */
 export async function compressToTarget(src, opts) {
-  const { targetBytes, tolerance = 0.2, type = "image/jpeg", resolution = null } = opts;
+  const { targetBytes, tolerance = 0.2, maxBytes = Infinity, type = "image/jpeg", resolution = null } = opts;
   const srcW = src.width;
   const srcH = src.height;
 
@@ -111,7 +120,7 @@ export async function compressToTarget(src, opts) {
   if (resolution) {
     const { w, h } = fitDims(srcW, srcH, resolution.w, resolution.h);
     const canvas = draw(src, w, h);
-    const r = await searchQuality(canvas, type, targetBytes, tolerance);
+    const r = await searchQuality(canvas, type, targetBytes, tolerance, maxBytes);
     return { blob: r.blob, width: w, height: h, quality: r.quality, status: r.status };
   }
 
@@ -127,7 +136,7 @@ export async function compressToTarget(src, opts) {
     seen.add(key);
 
     const canvas = draw(src, w, h);
-    const r = await searchQuality(canvas, type, targetBytes, tolerance);
+    const r = await searchQuality(canvas, type, targetBytes, tolerance, maxBytes);
     const dist = Math.abs(r.blob.size - targetBytes);
     if (dist < bestDist) {
       bestDist = dist;

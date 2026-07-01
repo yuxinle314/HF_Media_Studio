@@ -2,10 +2,10 @@
 
 /** 人类可读的字节数 */
 export function formatBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
-  return `${(kb / 1024).toFixed(2)} MB`;
+  if (bytes < 1000) return `${bytes} B`;
+  const kb = bytes / 1000;
+  if (kb < 1000) return `${kb.toFixed(kb < 10 ? 1 : 0)} kB`;
+  return `${(kb / 1000).toFixed(2)} MB`;
 }
 
 /** 触发浏览器下载一个 Blob */

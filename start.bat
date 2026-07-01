@@ -23,6 +23,15 @@ echo Login is required.
 echo Username: cuc
 echo Password: ecdav
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-ffmpeg.ps1"
+if errorlevel 1 (
+  echo.
+  echo Video transcoding needs ffmpeg.exe with libx265 or libx264 support on the server computer.
+  echo Other functions can still run without ffmpeg.
+  echo Press any key to continue starting the service.
+  pause >nul
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\serve-local.ps1" -Port 8080 -Mode "%MODE%"
 if errorlevel 1 (
   echo.

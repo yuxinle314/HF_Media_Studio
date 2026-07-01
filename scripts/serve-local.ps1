@@ -14,7 +14,10 @@ $ErrorActionPreference = "Stop"
 $Root = [System.IO.Path]::GetFullPath((Resolve-Path (Join-Path $PSScriptRoot "..")).Path)
 $RootWithSlash = $Root.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 $UploadRoot = Join-Path $Root "server_uploads"
-$MaxUploadBytes = 10 * 1024 * 1024
+$MaxRequestBytes = 300 * 1024 * 1024
+$MaxStoredUploadBytes = 256000
+$MaxVideoInputBytes = 300 * 1024 * 1024
+$TargetVideoBytes = 256000
 $IsLanMode = $Mode -ieq "Lan"
 $Address = if ($IsLanMode) {
   [System.Net.IPAddress]::Any
@@ -150,7 +153,7 @@ function Read-HttpRequest {
       $ContentLength = $ParsedLength
     }
   }
-  if ($ContentLength -gt $MaxUploadBytes) {
+  if ($ContentLength -gt $MaxRequestBytes) {
     throw "Request body is too large."
   }
 
@@ -247,10 +250,10 @@ function Save-UploadedBlob {
   if ($null -eq $Body -or $Body.Length -eq 0) {
     return @{ ok = $false; error = "Empty upload." }
   }
-  if ($Body.Length -gt $MaxUploadBytes) {
-    return @{ ok = $false; error = "Upload is larger than 10 MB." }
+  if ($Body.Length -gt $MaxStoredUploadBytes) {
+    return @{ ok = $false; error = "Upload is larger than 256 kB (256000 bytes)." }
   }
-  if ($Subdir -notin @("pics", "voices")) {
+  if ($Subdir -notin @("pics", "voices", "videos")) {
     return @{ ok = $false; error = "Unsupported upload directory." }
   }
 
@@ -279,6 +282,300 @@ function Save-UploadedBlob {
   }
 }
 
+function Get-FfmpegPath {
+  if (-not [string]::IsNullOrWhiteSpace($env:FFMPEG_PATH) -and [System.IO.File]::Exists($env:FFMPEG_PATH)) {
+    return $env:FFMPEG_PATH
+  }
+
+  $LocalCandidates = @(
+    (Join-Path $Root "tools\ffmpeg.exe"),
+    (Join-Path $Root "tools\ffmpeg\bin\ffmpeg.exe")
+  )
+  foreach ($Candidate in $LocalCandidates) {
+    if ([System.IO.File]::Exists($Candidate)) {
+      return $Candidate
+    }
+  }
+
+  $ToolsDir = Join-Path $Root "tools"
+  if ([System.IO.Directory]::Exists($ToolsDir)) {
+    $Extracted = Get-ChildItem -LiteralPath $ToolsDir -Recurse -Filter ffmpeg.exe -File -ErrorAction SilentlyContinue |
+      Select-Object -First 1
+    if ($Extracted) {
+      return $Extracted.FullName
+    }
+  }
+
+  $Command = Get-Command ffmpeg -ErrorAction SilentlyContinue
+  if ($Command) {
+    return $Command.Source
+  }
+
+  return $null
+}
+
+function Invoke-Ffmpeg {
+  param(
+    [string]$FfmpegPath,
+    [string[]]$Arguments
+  )
+
+  $Output = & $FfmpegPath @Arguments 2>&1
+  @{
+    exitCode = $LASTEXITCODE
+    output = ($Output | Out-String).Trim()
+  }
+}
+
+function Test-FfmpegEncoder {
+  param(
+    [string]$FfmpegPath,
+    [string]$Encoder
+  )
+
+  $Output = & $FfmpegPath -hide_banner -encoders 2>&1
+  return (($Output | Out-String) -match "\b$([regex]::Escape($Encoder))\b")
+}
+
+function Get-FfmpegVideoCodec {
+  param([string]$FfmpegPath)
+
+  if (Test-FfmpegEncoder -FfmpegPath $FfmpegPath -Encoder "libx265") {
+    return @{
+      encoder = "libx265"
+      name = "H.265/HEVC"
+      extraArgs = @("-x265-params", "log-level=error", "-tag:v", "hvc1")
+    }
+  }
+
+  if (Test-FfmpegEncoder -FfmpegPath $FfmpegPath -Encoder "libx264") {
+    return @{
+      encoder = "libx264"
+      name = "H.264/AVC"
+      extraArgs = @()
+    }
+  }
+
+  return $null
+}
+
+function Convert-UploadedVideo {
+  param(
+    [hashtable]$Query,
+    [byte[]]$Body
+  )
+
+  if ($null -eq $Body -or $Body.Length -eq 0) {
+    return @{ ok = $false; error = "Empty video upload." }
+  }
+  if ($Body.Length -gt $MaxVideoInputBytes) {
+    return @{ ok = $false; error = "Video upload is larger than 300 MB." }
+  }
+
+  $FfmpegPath = Get-FfmpegPath
+  if ([string]::IsNullOrWhiteSpace($FfmpegPath)) {
+    return @{
+      ok = $false
+      error = "Missing ffmpeg.exe on the server computer. Put it at tools\ffmpeg.exe, extract a ffmpeg build under tools\, add it to PATH, or set FFMPEG_PATH."
+    }
+  }
+  $VideoCodec = Get-FfmpegVideoCodec -FfmpegPath $FfmpegPath
+  if ($null -eq $VideoCodec) {
+    return @{
+      ok = $false
+      error = "ffmpeg.exe does not include libx265 or libx264. Please use a Windows ffmpeg build with H.265 or H.264 encoding support."
+    }
+  }
+
+  $Fps = 3
+  if ($Query.ContainsKey("fps")) {
+    [void][int]::TryParse($Query["fps"], [ref]$Fps)
+  }
+  $Fps = [Math]::Min(5, [Math]::Max(1, $Fps))
+
+  $Seconds = 20
+  if ($Query.ContainsKey("seconds")) {
+    [void][int]::TryParse($Query["seconds"], [ref]$Seconds)
+  }
+  $Seconds = [Math]::Min(20, [Math]::Max(1, $Seconds))
+
+  $MaxWidth = 640
+  if ($Query.ContainsKey("maxw")) {
+    [void][int]::TryParse($Query["maxw"], [ref]$MaxWidth)
+  }
+  $MaxWidth = [Math]::Min(640, [Math]::Max(160, $MaxWidth))
+
+  $MaxHeight = 480
+  if ($Query.ContainsKey("maxh")) {
+    [void][int]::TryParse($Query["maxh"], [ref]$MaxHeight)
+  }
+  $MaxHeight = [Math]::Min(480, [Math]::Max(120, $MaxHeight))
+
+  $TargetKb = [int][Math]::Ceiling($TargetVideoBytes / 1000)
+  if ($Query.ContainsKey("targetkb")) {
+    [void][int]::TryParse($Query["targetkb"], [ref]$TargetKb)
+  }
+  $TargetBytes = [int64]([Math]::Min(256, [Math]::Max(20, $TargetKb)) * 1000)
+
+  $OriginalName = if ($Query.ContainsKey("filename")) { $Query["filename"] } else { "video.mp4" }
+  $SafeInputName = Get-SafeUploadFileName -FileName $OriginalName
+  $BaseName = [System.IO.Path]::GetFileNameWithoutExtension($SafeInputName)
+  if ([string]::IsNullOrWhiteSpace($BaseName)) {
+    $BaseName = "video"
+  }
+
+  $StampText = (Get-Date).ToString("yyyyMMdd_HHmmss")
+  $InputDir = Join-Path $UploadRoot "video_inputs"
+  $OutputDir = Join-Path $UploadRoot "videos"
+  [System.IO.Directory]::CreateDirectory($InputDir) | Out-Null
+  [System.IO.Directory]::CreateDirectory($OutputDir) | Out-Null
+
+  $InputPath = Join-Path $InputDir "$StampText`_$SafeInputName"
+  $OutputName = "$BaseName`_${Seconds}s_${Fps}fps_$StampText.mp4"
+  $OutputName = Get-SafeUploadFileName -FileName $OutputName
+  $OutputPath = Join-Path $OutputDir $OutputName
+
+  [System.IO.File]::WriteAllBytes($InputPath, $Body)
+
+  $ScaleCandidates = @()
+  foreach ($Size in @(
+    @{ Width = $MaxWidth; Height = $MaxHeight },
+    @{ Width = [Math]::Min($MaxWidth, 480); Height = [Math]::Min($MaxHeight, 360) },
+    @{ Width = [Math]::Min($MaxWidth, 320); Height = [Math]::Min($MaxHeight, 240) },
+    @{ Width = [Math]::Min($MaxWidth, 240); Height = [Math]::Min($MaxHeight, 180) },
+    @{ Width = [Math]::Min($MaxWidth, 160); Height = [Math]::Min($MaxHeight, 120) }
+  )) {
+    if ($Size.Width -lt 160 -or $Size.Height -lt 120) {
+      continue
+    }
+    $Duplicate = $false
+    foreach ($Existing in $ScaleCandidates) {
+      if ($Existing.Width -eq $Size.Width -and $Existing.Height -eq $Size.Height) {
+        $Duplicate = $true
+        break
+      }
+    }
+    if (-not $Duplicate) {
+      $ScaleCandidates += $Size
+    }
+  }
+
+  $DurationTargetKbps = [Math]::Max(48, [int][Math]::Floor(($TargetBytes * 8 / 1000 / $Seconds) * 0.82))
+  $Bitrates = @()
+  foreach ($Candidate in @(650, 450, $DurationTargetKbps, 320, 240, 180, 120, 80, 48)) {
+    $Value = [Math]::Min(650, [Math]::Max(32, [int]$Candidate))
+    if ($Bitrates -notcontains $Value) {
+      $Bitrates += $Value
+    }
+  }
+  $Bitrates = $Bitrates | Sort-Object -Descending
+
+  $BestOutput = $null
+  $BestBytes = [int64]::MaxValue
+  $BestWidth = $MaxWidth
+  $BestHeight = $MaxHeight
+  $BestBitrate = 0
+  $LastError = ""
+
+  try {
+    $FoundUnderTarget = $false
+
+    foreach ($Scale in $ScaleCandidates) {
+      $ScaleFilter = "fps={0},scale={1}:{2}:force_original_aspect_ratio=decrease:force_divisible_by=2" -f $Fps, $Scale.Width, $Scale.Height
+
+      foreach ($Bitrate in $Bitrates) {
+        if ([System.IO.File]::Exists($OutputPath)) {
+          [System.IO.File]::Delete($OutputPath)
+        }
+
+        $Args = @(
+          "-y",
+          "-hide_banner",
+          "-loglevel", "error",
+          "-t", [string]$Seconds,
+          "-i", $InputPath,
+          "-vf", $ScaleFilter,
+          "-an",
+          "-c:v", $VideoCodec.encoder,
+          "-preset", "veryfast",
+          "-b:v", "${Bitrate}k",
+          "-maxrate", "${Bitrate}k",
+          "-bufsize", "$($Bitrate * 2)k",
+          "-pix_fmt", "yuv420p"
+        )
+        $Args += $VideoCodec.extraArgs
+        $Args += @("-movflags", "+faststart", $OutputPath)
+
+        $Run = Invoke-Ffmpeg -FfmpegPath $FfmpegPath -Arguments $Args
+        if ($Run.exitCode -ne 0 -or -not [System.IO.File]::Exists($OutputPath)) {
+          $LastError = $Run.output
+          continue
+        }
+
+        $Bytes = ([System.IO.FileInfo]$OutputPath).Length
+        if ($Bytes -lt $BestBytes) {
+          $BestBytes = $Bytes
+          $BestOutput = [System.IO.File]::ReadAllBytes($OutputPath)
+          $BestWidth = $Scale.Width
+          $BestHeight = $Scale.Height
+          $BestBitrate = $Bitrate
+        }
+        if ($Bytes -le $TargetBytes) {
+          $BestOutput = [System.IO.File]::ReadAllBytes($OutputPath)
+          $BestBytes = $Bytes
+          $BestWidth = $Scale.Width
+          $BestHeight = $Scale.Height
+          $BestBitrate = $Bitrate
+          $FoundUnderTarget = $true
+          break
+        }
+      }
+
+      if ($FoundUnderTarget) {
+        break
+      }
+    }
+
+    if ($null -eq $BestOutput) {
+      if ([string]::IsNullOrWhiteSpace($LastError)) {
+        $LastError = "ffmpeg failed to create an output file."
+      }
+      return @{ ok = $false; error = $LastError }
+    }
+
+    [System.IO.File]::WriteAllBytes($OutputPath, $BestOutput)
+    $StoredBytes = ([System.IO.FileInfo]$OutputPath).Length
+    if ($StoredBytes -gt $TargetBytes) {
+      try { [System.IO.File]::Delete($OutputPath) } catch {}
+      return @{
+        ok = $false
+        error = "Could not compress the video under 256 kB (256000 bytes). Try 320x240, 1 FPS, or a shorter source segment."
+      }
+    }
+
+    $EncodedOutputName = [System.Uri]::EscapeDataString($OutputName)
+
+    return @{
+      ok = $true
+      filename = $OutputName
+      bytes = $StoredBytes
+      inputBytes = $Body.Length
+      fps = $Fps
+      seconds = $Seconds
+      maxWidth = $BestWidth
+      maxHeight = $BestHeight
+      codec = $VideoCodec.name
+      bitrateKbps = $BestBitrate
+      targetBytes = $TargetBytes
+      underTarget = $StoredBytes -le $TargetBytes
+      path = "server_uploads/videos/$OutputName"
+      url = "/server_uploads/videos/$EncodedOutputName"
+    }
+  } finally {
+    try { [System.IO.File]::Delete($InputPath) } catch {}
+  }
+}
+
 function Get-ContentType {
   param([string]$Path)
 
@@ -299,6 +596,10 @@ function Get-ContentType {
     ".mp3" { "audio/mpeg"; break }
     ".wav" { "audio/wav"; break }
     ".c2" { "application/octet-stream"; break }
+    ".mp4" { "video/mp4"; break }
+    ".m4v" { "video/mp4"; break }
+    ".mov" { "video/quicktime"; break }
+    ".webm" { "video/webm"; break }
     default { "application/octet-stream" }
   }
 }
@@ -491,8 +792,8 @@ if (-not $NoBrowser) {
 try {
   while ($true) {
     $Client = $Listener.AcceptTcpClient()
-    $Client.ReceiveTimeout = 5000
-    $Client.SendTimeout = 5000
+    $Client.ReceiveTimeout = 300000
+    $Client.SendTimeout = 300000
 
     try {
       $Stream = $Client.GetStream()
@@ -515,6 +816,23 @@ try {
       if (-not (Test-Authorized -Headers $Request.Headers)) {
         Send-AuthRequired -Stream $Stream -IncludeBody $IncludeBody
         Write-Host "$Method $RequestPath -> 401"
+        continue
+      }
+
+      if ($RequestPath -eq "/api/video/transcode") {
+        if ($Method -ne "POST") {
+          Send-Text -Stream $Stream -StatusCode 405 -Reason "Method Not Allowed" -Text "Method Not Allowed" -IncludeBody $IncludeBody
+          continue
+        }
+
+        $Query = Get-QueryParams -Target $RequestTarget
+        $Result = Convert-UploadedVideo -Query $Query -Body $Request.Body
+        if ($Result.ok) {
+          Send-Json -Stream $Stream -StatusCode 200 -Reason "OK" -Data $Result -IncludeBody $IncludeBody
+          Write-Host "$Method $RequestPath -> transcoded $($Result.path) ($($Result.bytes) bytes)"
+        } else {
+          Send-Json -Stream $Stream -StatusCode 400 -Reason "Bad Request" -Data $Result -IncludeBody $IncludeBody
+        }
         continue
       }
 
