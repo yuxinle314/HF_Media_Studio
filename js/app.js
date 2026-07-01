@@ -111,10 +111,8 @@ async function initStorage() {
 function initTabs() {
   const tabs = document.querySelectorAll(".topbar .seg-item[data-tab]");
   const panels = {
-    speech: $("panel-speech"),
     camera: $("panel-camera"),
     image: $("panel-image"),
-    video: $("panel-video"),
     audio: $("panel-audio"),
   };
   tabs.forEach((tab) => {
@@ -355,205 +353,6 @@ function initImageFile() {
 }
 
 /* ============================================================
-   视频: 上传到服务电脑转码压缩
-   ============================================================ */
-function initVideo() {
-  const VIDEO_TARGETS_KB = {
-    "640x480": 256,
-    "320x240": 256,
-  };
-  const drop = $("vid-drop");
-  const fileInput = $("vid-file");
-  const runBtn = $("vid-run");
-  const statusEl = $("vid-status");
-  const progress = $("vid-progress");
-  const progressBar = progress.querySelector("span");
-  const resultCard = $("vid-result");
-  const videoEl = $("vid-out-video");
-  const metaEl = $("vid-out-meta");
-  const downloadBtn = $("vid-download");
-  const copyLinkBtn = $("vid-copy-link");
-
-  const getFps = bindSegmented("vid-fps");
-  const getSize = bindSegmented("vid-size");
-
-  let sourceFile = null;
-  let resultUrl = "";
-  let resultName = "";
-
-  function setProgress(percent) {
-    progress.hidden = false;
-    progressBar.style.width = Math.max(0, Math.min(100, percent)) + "%";
-  }
-
-  function cleanBaseName(name) {
-    const base = (name || "video").replace(/\.[^.]+$/, "").trim();
-    return base || "video";
-  }
-
-  function getSelectedSize() {
-    const key = getSize() || "320x240";
-    const [width, height] = key.split("x").map((value) => parseInt(value, 10));
-    return {
-      width: Number.isFinite(width) ? width : 320,
-      height: Number.isFinite(height) ? height : 240,
-      targetKb: VIDEO_TARGETS_KB[key] || 256,
-    };
-  }
-
-  function formatTargetSize(bytes) {
-    const kb = Math.round((bytes || 0) / DECIMAL_KB);
-    if (kb >= 1000 && kb % 1000 === 0) return `${kb / 1000}MB`;
-    return `${kb}kB`;
-  }
-
-  function setVideoFile(file) {
-    if (!file) return;
-    const looksLikeVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(file.name || "");
-    if (!looksLikeVideo) return toast("请选择视频文件");
-    sourceFile = file;
-    resultCard.hidden = true;
-    resultUrl = "";
-    resultName = "";
-    runBtn.disabled = false;
-    statusEl.textContent = "";
-    progress.hidden = true;
-    progressBar.style.width = "0%";
-    drop.querySelector("p").innerHTML = `<strong>${file.name || "video"}</strong>`;
-    drop.querySelector("small").textContent = formatBytes(file.size);
-  }
-
-  function postVideoForTranscode(file) {
-    return new Promise((resolve, reject) => {
-      const size = getSelectedSize();
-      const params = new URLSearchParams({
-        filename: file.name || "video.mp4",
-        fps: getFps(),
-        seconds: "20",
-        maxw: String(size.width),
-        maxh: String(size.height),
-        targetkb: String(size.targetKb),
-      });
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/video/transcode?${params.toString()}`);
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) return;
-        const uploadRatio = event.loaded / event.total;
-        setProgress(5 + uploadRatio * 45);
-        statusEl.textContent = `正在上传到服务电脑… ${Math.round(uploadRatio * 100)}%`;
-      };
-      xhr.upload.onload = () => {
-        setProgress(65);
-        statusEl.textContent = "上传完成，服务电脑正在转码…";
-      };
-      xhr.onerror = () => reject(new Error("无法连接服务电脑"));
-      xhr.onload = () => {
-        let data = null;
-        try {
-          data = JSON.parse(xhr.responseText || "{}");
-        } catch {
-          reject(new Error("服务端返回格式错误"));
-          return;
-        }
-        if (xhr.status < 200 || xhr.status >= 300 || !data.ok) {
-          reject(new Error(data?.error || `HTTP ${xhr.status}`));
-          return;
-        }
-        resolve(data);
-      };
-      xhr.send(file);
-    });
-  }
-
-  fileInput.addEventListener("change", (e) => setVideoFile(e.target.files[0]));
-  ["dragenter", "dragover"].forEach((ev) =>
-    drop.addEventListener(ev, (e) => {
-      e.preventDefault();
-      drop.classList.add("dragover");
-    })
-  );
-  ["dragleave", "drop"].forEach((ev) =>
-    drop.addEventListener(ev, (e) => {
-      e.preventDefault();
-      drop.classList.remove("dragover");
-    })
-  );
-  drop.addEventListener("drop", (e) => setVideoFile(e.dataTransfer.files[0]));
-
-  runBtn.addEventListener("click", async () => {
-    if (!sourceFile) return;
-    runBtn.disabled = true;
-    runBtn.textContent = "处理中…";
-    resultCard.hidden = true;
-    setProgress(5);
-    statusEl.textContent = "准备上传视频…";
-
-    try {
-      const data = await postVideoForTranscode(sourceFile);
-      setProgress(100);
-      resultUrl = data.url;
-      resultName = data.filename || `${cleanBaseName(sourceFile.name)}_compressed.mp4`;
-      videoEl.src = resultUrl;
-      const selectedSize = getSelectedSize();
-      const targetLabel = formatTargetSize(data.targetBytes || selectedSize.targetKb * DECIMAL_KB);
-      metaEl.innerHTML = [
-        ["原始大小", formatBytes(data.inputBytes || sourceFile.size)],
-        ["输出大小", `<strong>${formatBytes(data.bytes || 0)}</strong>`],
-        ["压缩比", data.bytes ? `${((data.inputBytes || sourceFile.size) / data.bytes).toFixed(1)}×` : "-"],
-        ["目标大小", targetLabel],
-        ["参数", `${data.seconds || 20}s · ${data.fps || getFps()} FPS · ≤${data.maxWidth || selectedSize.width}×${data.maxHeight || selectedSize.height}`],
-        ["视频编码", data.codec || "H.265/HEVC 优先"],
-        ["音频", "已移除"],
-        ["状态", data.underTarget ? `<span class="badge ok">${targetLabel} 内</span>` : `<span class="badge warn">超过 ${targetLabel}</span>`],
-      ]
-        .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
-        .join("");
-      resultCard.hidden = false;
-      statusEl.textContent = `完成，已保存到服务电脑: ${data.path}`;
-      toast("视频压缩完成");
-    } catch (e) {
-      statusEl.textContent = "失败: " + (e.message || e);
-      toast("视频压缩失败");
-    } finally {
-      runBtn.disabled = false;
-      runBtn.textContent = "上传并压缩";
-      setTimeout(() => {
-        if (!resultCard.hidden) progress.hidden = true;
-      }, 600);
-    }
-  });
-
-  downloadBtn.addEventListener("click", async () => {
-    if (!resultUrl) return;
-    downloadBtn.disabled = true;
-    downloadBtn.textContent = "下载中…";
-    try {
-      const resp = await fetch(resultUrl, { cache: "no-store" });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const blob = await resp.blob();
-      downloadBlob(blob, resultName || "compressed.mp4");
-    } catch (e) {
-      toast("下载失败: " + (e.message || e));
-    } finally {
-      downloadBtn.disabled = false;
-      downloadBtn.textContent = "下载到本机";
-    }
-  });
-
-  copyLinkBtn.addEventListener("click", async () => {
-    if (!resultUrl) return;
-    const href = new URL(resultUrl, window.location.href).href;
-    try {
-      await navigator.clipboard.writeText(href);
-      toast("已复制视频链接");
-    } catch {
-      toast("复制失败");
-    }
-  });
-}
-
-/* ============================================================
    音频: 录音 + Codec2 声码器
    ============================================================ */
 function initAudio() {
@@ -582,15 +381,6 @@ function initAudio() {
   const c2MetaEl = $("c2-out-meta");
   const c2PlayBtn = $("c2-play-out");
   const c2DownloadBtn = $("c2-download");
-  const speechCard = $("speech-card");
-  const sttStartBtn = $("stt-start");
-  const sttStopBtn = $("stt-stop");
-  const sttTimeEl = $("stt-time");
-  const sttProgressEl = $("stt-progress");
-  const sttTextEl = $("stt-text");
-  const sttCopyBtn = $("stt-copy");
-  const sttDownloadBtn = $("stt-download");
-  const sttStatusEl = $("stt-status");
 
   const getMode = bindSegmented("aud-mode");
 
@@ -614,14 +404,6 @@ function initAudio() {
   let outAudio = new Audio();
   let srcAudio = new Audio();
   let mp3Audio = new Audio();
-  let speechRecognition = null;
-  let speechActive = false;
-  let speechStartTime = 0;
-  let speechTimer = null;
-  let speechServiceReady = false;
-  let speechAvailabilityChecking = false;
-  let speechFinalText = "";
-  let speechHadError = false;
 
   function setSource(blob, name) {
     source = { blob, name, bytes: blob.size };
@@ -651,235 +433,6 @@ function initAudio() {
     c2Drop.querySelector("small").textContent = `${formatBytes(file.size)} · Codec2`;
   }
 
-  function setSpeechText(text) {
-    sttTextEl.value = text;
-    const hasText = text.trim().length > 0;
-    sttCopyBtn.disabled = !hasText;
-    sttDownloadBtn.disabled = !hasText;
-  }
-
-  function setSpeechRunning(running) {
-    speechActive = running;
-    sttStartBtn.disabled = running || !speechServiceReady;
-    sttStopBtn.disabled = !running;
-    sttStartBtn.textContent = running ? "识别中…" : "开始识别";
-  }
-
-  function setSpeechAvailability(available, message) {
-    speechServiceReady = available;
-    speechCard.classList.toggle("is-unavailable", !available);
-    speechCard.setAttribute("aria-disabled", String(!available));
-    sttTextEl.readOnly = !available;
-    if (!speechActive) {
-      sttStartBtn.disabled = !available;
-      sttStopBtn.disabled = true;
-      sttStartBtn.textContent = "开始识别";
-    }
-    sttStatusEl.textContent = message;
-  }
-
-  async function probeSpeechNetwork(timeoutMs = 3500) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let apiAnswered = false;
-
-    try {
-      const resp = await fetch(`/api/netcheck?_=${Date.now()}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const contentType = resp.headers.get("content-type") || "";
-      if (resp.ok && contentType.includes("application/json")) {
-        apiAnswered = true;
-        const data = await resp.json();
-        if (data.ok) return true;
-        throw new Error("offline");
-      }
-    } catch (e) {
-      if (apiAnswered || !navigator.onLine) throw e;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    return navigator.onLine;
-  }
-
-  async function refreshSpeechAvailability({ silent = false } = {}) {
-    if (speechActive || speechAvailabilityChecking) return speechServiceReady;
-    speechAvailabilityChecking = true;
-
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      setSpeechAvailability(false, "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。");
-      speechAvailabilityChecking = false;
-      return false;
-    }
-
-    if (!navigator.onLine) {
-      setSpeechAvailability(false, "当前网络离线，语音转文字暂不可用。");
-      speechAvailabilityChecking = false;
-      return false;
-    }
-
-    if (!silent) sttStatusEl.textContent = "正在检测在线语音识别服务…";
-    try {
-      await probeSpeechNetwork();
-      setSpeechAvailability(true, "在线语音识别服务可用，最长识别 60 秒。");
-      return true;
-    } catch {
-      setSpeechAvailability(false, "无法连接在线语音识别服务，语音转文字暂不可用。");
-      return false;
-    } finally {
-      speechAvailabilityChecking = false;
-    }
-  }
-
-  function updateSpeechProgress() {
-    const elapsed = performance.now() - speechStartTime;
-    const clamped = Math.min(elapsed, MAX_MS);
-    sttTimeEl.textContent = fmtSeconds(clamped / 1000);
-    sttProgressEl.style.width = (clamped / MAX_MS) * 100 + "%";
-    if (elapsed >= MAX_MS) stopSpeechRecognition("已到 60 秒上限");
-  }
-
-  function stopSpeechRecognition(reason = "识别已停止") {
-    if (speechTimer) clearInterval(speechTimer);
-    speechTimer = null;
-    if (speechRecognition && speechActive) {
-      try { speechRecognition.stop(); } catch {}
-    } else {
-      setSpeechRunning(false);
-    }
-    sttStatusEl.textContent = reason;
-  }
-
-  function startBrowserSpeechRecognition() {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      sttStatusEl.textContent = "当前浏览器不支持语音识别，请使用最新版 Edge 或 Chrome。";
-      toast("浏览器不支持语音识别");
-      return;
-    }
-    if (!speechServiceReady) {
-      refreshSpeechAvailability();
-      return toast("语音转文字暂不可用");
-    }
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      return toast("请先结束录音");
-    }
-
-    speechRecognition = new Recognition();
-    speechFinalText = "";
-    speechHadError = false;
-    setSpeechText("");
-    sttTimeEl.textContent = "0.0";
-    sttProgressEl.style.width = "0%";
-    sttStatusEl.textContent = "正在监听麦克风…";
-
-    speechRecognition.lang = "zh-CN";
-    speechRecognition.continuous = true;
-    speechRecognition.interimResults = true;
-
-    speechRecognition.onstart = () => {
-      speechStartTime = performance.now();
-      setSpeechRunning(true);
-      speechTimer = setInterval(updateSpeechProgress, 100);
-      updateSpeechProgress();
-    };
-
-    speechRecognition.onresult = (event) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const part = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) {
-          speechFinalText += part.trim() ? part.trim() + "\n" : "";
-        } else {
-          interim += part;
-        }
-      }
-      setSpeechText((speechFinalText + interim).trim());
-    };
-
-    speechRecognition.onerror = (event) => {
-      speechHadError = true;
-      const message = event.error === "not-allowed"
-        ? "麦克风或语音识别权限被拒绝"
-        : "语音识别失败: " + event.error;
-      if (event.error === "network") {
-        setSpeechAvailability(false, "无法连接在线语音识别服务，语音转文字暂不可用。");
-      } else {
-        sttStatusEl.textContent = message;
-      }
-      toast(message);
-    };
-
-    speechRecognition.onend = () => {
-      if (speechTimer) clearInterval(speechTimer);
-      speechTimer = null;
-      setSpeechRunning(false);
-      const elapsed = performance.now() - speechStartTime;
-      const clamped = Math.min(elapsed, MAX_MS);
-      sttTimeEl.textContent = fmtSeconds(clamped / 1000);
-      sttProgressEl.style.width = (clamped / MAX_MS) * 100 + "%";
-      if (speechHadError) {
-        return;
-      }
-      if (!sttTextEl.value.trim()) {
-        sttStatusEl.textContent = "未识别到文字，请靠近麦克风再试。";
-      } else if (sttTextEl.value.trim()) {
-        sttStatusEl.textContent = elapsed >= MAX_MS ? "已到 60 秒上限" : "识别完成";
-      }
-    };
-
-    try {
-      speechRecognition.start();
-    } catch (e) {
-      sttStatusEl.textContent = "无法启动语音识别: " + (e.message || e);
-      setSpeechRunning(false);
-    }
-  }
-
-  function initSpeechToText() {
-    setSpeechAvailability(false, "正在检测在线语音识别服务…");
-    refreshSpeechAvailability();
-    window.addEventListener("online", () => refreshSpeechAvailability());
-    window.addEventListener("offline", () =>
-      setSpeechAvailability(false, "当前网络离线，语音转文字暂不可用。")
-    );
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refreshSpeechAvailability({ silent: true });
-    });
-    setInterval(() => refreshSpeechAvailability({ silent: true }), 30_000);
-
-    sttTextEl.addEventListener("input", () => setSpeechText(sttTextEl.value));
-
-    sttStartBtn.addEventListener("click", () => {
-      startBrowserSpeechRecognition();
-    });
-
-    sttStopBtn.addEventListener("click", () => stopSpeechRecognition());
-
-    sttCopyBtn.addEventListener("click", async () => {
-      const text = sttTextEl.value.trim();
-      if (!text) return;
-      try {
-        await navigator.clipboard.writeText(text);
-        toast("已复制识别文字");
-      } catch {
-        sttTextEl.select();
-        document.execCommand("copy");
-        toast("已复制识别文字");
-      }
-    });
-
-    sttDownloadBtn.addEventListener("click", () => {
-      const text = sttTextEl.value.trim();
-      if (!text) return;
-      const blob = new Blob([text + "\n"], { type: "text/plain;charset=utf-8" });
-      saveOutput("voices", `speech_text_${stamp()}.txt`, blob);
-    });
-  }
-
   /* ---- 录音 ---- */
   function pickMime() {
     const cands = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
@@ -888,7 +441,6 @@ function initAudio() {
 
   async function startRec() {
     if (starting || (mediaRecorder && mediaRecorder.state === "recording")) return;
-    if (speechActive) return toast("请先停止语音转文字");
     starting = true;
     try {
       recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1144,7 +696,6 @@ function initAudio() {
 
   c2DownloadBtn.addEventListener("click", () => mp3Blob && saveOutput("voices", mp3Name, mp3Blob));
 
-  initSpeechToText();
 }
 
 /* ============================================================
@@ -1155,5 +706,4 @@ initTabs();
 initStorage();
 initCamera();
 initImageFile();
-initVideo();
 initAudio();

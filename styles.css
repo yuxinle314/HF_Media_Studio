@@ -488,15 +488,6 @@ body {
   flex-shrink: 0;
 }
 
-.result-video {
-  width: min(260px, 46vw);
-  aspect-ratio: 4 / 3;
-  object-fit: contain;
-  border-radius: 12px;
-  background: #000;
-  flex-shrink: 0;
-}
-
 .result-meta {
   margin: 0;
   flex: 1;
@@ -575,67 +566,6 @@ body {
   color: var(--text-3);
   font-size: 15px;
   margin-left: 6px;
-}
-
-.rec-time.compact span {
-  font-size: 28px;
-}
-
-.speech-box {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.card.is-unavailable {
-  filter: grayscale(0.85);
-  background: color-mix(in srgb, var(--card) 68%, var(--separator) 32%);
-  border-color: color-mix(in srgb, var(--separator) 78%, transparent);
-  box-shadow: none;
-}
-
-.card.is-unavailable h2,
-.card.is-unavailable .hint,
-.card.is-unavailable .rec-time {
-  color: var(--text-3);
-}
-
-.card.is-unavailable .speech-box {
-  opacity: 0.62;
-}
-
-.card.is-unavailable .btn,
-.card.is-unavailable .transcript {
-  cursor: not-allowed;
-}
-
-.card.is-unavailable .rec-progress span {
-  background: var(--separator);
-}
-
-.transcript {
-  width: 100%;
-  min-height: 132px;
-  resize: vertical;
-  border: 1px solid var(--separator);
-  border-radius: 14px;
-  background: var(--fill);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.6;
-  padding: 12px 14px;
-  outline: none;
-}
-
-.transcript:focus {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--fill) 70%, var(--accent) 8%);
-}
-
-.transcript::placeholder {
-  color: var(--text-3);
 }
 
 /* 按住录音进度条 (60s = 100%) */
@@ -802,11 +732,4 @@ body {
     font-size: 11px;
   }
 
-  .video-result-body {
-    flex-direction: column;
-  }
-
-  .result-video {
-    width: 100%;
-  }
 }

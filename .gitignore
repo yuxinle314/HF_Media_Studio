@@ -8,7 +8,4 @@ Thumbs.db
 # Local
 *.local.*
 server_uploads/
-tools/ffmpeg.exe
-tools/**/ffmpeg.exe
-tools/**/*.dll
-tools/**/*.exe
+tools/

@@ -30,45 +30,16 @@
           <span class="app-clock" id="live-clock" aria-label="当前时间">0000-00-00 00:00:00</span>
         </p>
         <nav class="segmented" role="tablist" aria-label="功能">
-          <button class="seg-item is-active" role="tab" data-tab="speech">转文字</button>
-          <button class="seg-item" role="tab" data-tab="camera">拍照</button>
+          <button class="seg-item is-active" role="tab" data-tab="camera">拍照</button>
           <button class="seg-item" role="tab" data-tab="image">图片</button>
-          <button class="seg-item" role="tab" data-tab="video">视频</button>
           <button class="seg-item" role="tab" data-tab="audio">音频</button>
           <span class="seg-indicator" aria-hidden="true"></span>
         </nav>
       </header>
 
       <main class="content">
-        <!-- ============ 语音转文字 ============ -->
-        <section class="panel is-active" id="panel-speech" role="tabpanel">
-          <div class="card" id="speech-card">
-            <h2>语音转文字</h2>
-            <div class="speech-box">
-              <div class="row">
-                <button class="btn btn-primary" id="stt-start">开始识别</button>
-                <button class="btn btn-secondary" id="stt-stop" disabled>停止</button>
-              </div>
-              <div class="rec-time compact"><span id="stt-time">0.0</span><small>/ 60.0 s</small></div>
-              <div class="rec-progress"><span id="stt-progress"></span></div>
-              <textarea
-                id="stt-text"
-                class="transcript"
-                rows="5"
-                placeholder="识别结果会显示在这里"
-              ></textarea>
-              <div class="row">
-                <button class="btn btn-secondary" id="stt-copy" disabled>复制文字</button>
-                <button class="btn btn-primary" id="stt-download" disabled>保存到 voices/</button>
-              </div>
-              <p class="hint">使用浏览器语音识别能力，最长 60 秒；适合实时麦克风口述，不支持直接识别已选音频文件。</p>
-              <p class="status" id="stt-status"></p>
-            </div>
-          </div>
-        </section>
-
         <!-- ============ 拍照 ============ -->
-        <section class="panel" id="panel-camera" role="tabpanel">
+        <section class="panel is-active" id="panel-camera" role="tabpanel">
           <div class="card">
             <div class="card-head">
               <h2>摄像头拍照</h2>
@@ -190,55 +161,6 @@
           </div>
         </section>
 
-        <!-- ============ 视频 ============ -->
-        <section class="panel" id="panel-video" role="tabpanel">
-          <div class="card">
-            <h2>选择视频文件</h2>
-            <label class="dropzone" id="vid-drop">
-              <input type="file" id="vid-file" accept="video/*" hidden />
-              <div class="vf-icon">🎬</div>
-              <p><strong>点击选择</strong> 或拖拽视频到此</p>
-              <small>MP4 / MOV / WebM…</small>
-            </label>
-          </div>
-
-          <div class="card">
-            <h2>服务端压缩设置</h2>
-            <div class="field">
-              <label>帧率</label>
-              <div class="segmented small" data-group="vid-fps">
-                <button class="seg-item" data-val="1">1 FPS</button>
-                <button class="seg-item" data-val="2">2 FPS</button>
-                <button class="seg-item is-active" data-val="3">3 FPS</button>
-                <button class="seg-item" data-val="5">5 FPS</button>
-              </div>
-            </div>
-            <div class="field">
-              <label>分辨率</label>
-              <div class="segmented small" data-group="vid-size">
-                <button class="seg-item" data-val="640x480">640×480</button>
-                <button class="seg-item is-active" data-val="320x240">320×240</button>
-              </div>
-            </div>
-            <button class="btn btn-primary full" id="vid-run" disabled>上传并压缩</button>
-            <p class="hint">H.265 优先，缺少时回退 H.264 · 最长取前 20 秒 · 目标 256kB（256000 Bytes）以内 · 去除音频</p>
-            <div class="progress" id="vid-progress" hidden><span></span></div>
-            <p class="status" id="vid-status"></p>
-          </div>
-
-          <div class="card result-card" id="vid-result" hidden>
-            <h2>视频压缩结果</h2>
-            <div class="result-body video-result-body">
-              <video id="vid-out-video" class="result-video" controls playsinline></video>
-              <dl class="result-meta" id="vid-out-meta"></dl>
-            </div>
-            <div class="row result-actions">
-              <button class="btn btn-primary" id="vid-download">下载到本机</button>
-              <button class="btn btn-secondary" id="vid-copy-link">复制链接</button>
-            </div>
-          </div>
-        </section>
-
         <!-- ============ 音频 ============ -->
         <section class="panel" id="panel-audio" role="tabpanel">
           <div class="card">
@@ -323,7 +245,7 @@
           输出文件夹：<strong id="saveloc-name">浏览器下载</strong>
           <button class="linkbtn" id="saveloc-btn" hidden>选择文件夹…</button>
         </p>
-        <p>照片存入 <code>pics/</code>，音频存入 <code>voices/</code>，视频存入 <code>server_uploads/videos/</code> · 语音识别由浏览器能力提供 · 摄像头/麦克风需在 HTTPS 或 localhost 下授权</p>
+        <p>照片存入 <code>pics/</code>，音频存入 <code>voices/</code> · 摄像头/麦克风需在 HTTPS 或 localhost 下授权</p>
       </footer>
     </div>
 
