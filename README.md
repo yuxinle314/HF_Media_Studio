@@ -104,6 +104,7 @@ python3 -m http.server 8080
 - 用 Canvas 将图像缩放到目标分辨率（**不放大**，保持宽高比 contain）。
 - 对 JPEG / WebP 的质量做 **二分搜索**，并用 256kB（256000 Bytes）作为输出硬上限。
 - 自动模式：从大到小尝试预设分辨率，仅在"即便最低质量仍超标"时降级，取最接近目标的结果。
+- 压缩结果预览和大图使用压缩后 Blob 转出的 `data:` 图片数据，手机长按保存时目标是压缩后的图片。
 - 一键服务提供 `POST /api/upload`，用于把局域网设备上的压缩结果写入服务电脑 `server_uploads/pics/`。
 
 ### 视频转码（`scripts/serve-local.ps1`）

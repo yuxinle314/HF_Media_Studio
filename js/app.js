@@ -176,6 +176,15 @@ function closeImageViewer() {
   document.body.classList.remove("viewer-open");
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("无法读取压缩图片"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /* 把分辨率分段值解析成 {w,h} 或 null(自动) */
 function parseRes(val) {
   if (!val || val === "auto") return null;
@@ -184,26 +193,31 @@ function parseRes(val) {
 }
 
 /* 渲染图像压缩结果到指定 DOM */
-function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, result, originalBytes, baseName) {
+async function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, result, originalBytes, baseName) {
   const { blob, width, height, quality, status } = result;
-  const url = URL.createObjectURL(blob);
 
   const ext = blob.type === "image/webp" ? "webp" : "jpg";
   const kb = Math.round(blob.size / DECIMAL_KB);
   // 照片统一保存到 pics/, 文件名带时间戳避免覆盖
   const filename = `${baseName}_${kb}kb_${width}x${height}_${stamp()}.${ext}`;
+  let previewSrc = "";
+  try {
+    previewSrc = await blobToDataUrl(blob);
+  } catch {
+    previewSrc = URL.createObjectURL(blob);
+  }
 
-  imgEl.src = url;
+  imgEl.src = previewSrc;
   imgEl.alt = `${filename} 预览`;
   imgEl.classList.add("result-thumb-clickable");
   imgEl.tabIndex = 0;
   imgEl.setAttribute("role", "button");
   imgEl.setAttribute("title", "查看大图");
-  imgEl.onclick = () => openImageViewer(url, filename);
+  imgEl.onclick = () => openImageViewer(previewSrc, filename);
   imgEl.onkeydown = (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
-    openImageViewer(url, filename);
+    openImageViewer(previewSrc, filename);
   };
 
   const ok = status === "ok";
@@ -314,7 +328,7 @@ function initCamera() {
       type: getFmt(),
       resolution: parseRes(getRes()),
     });
-    renderImageResult(els, result, null, "photo");
+    await renderImageResult(els, result, null, "photo");
   }
 
   shotBtn.addEventListener("click", async () => {
@@ -402,7 +416,7 @@ function initImageFile() {
       type: getFmt(),
       resolution: parseRes(getRes()),
     });
-    renderImageResult(els, result, originalBytes, "image");
+    await renderImageResult(els, result, originalBytes, "image");
   }
 
   runBtn.addEventListener("click", async () => {
