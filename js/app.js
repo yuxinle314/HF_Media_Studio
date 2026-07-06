@@ -127,6 +127,55 @@ function initTabs() {
   });
 }
 
+/* ============================================================
+   图片大图预览: 方便手机长按保存到相册
+   ============================================================ */
+let imageViewer = null;
+
+function initImageViewer() {
+  const root = $("image-viewer");
+  const img = $("image-viewer-img");
+  const closeBtn = $("image-viewer-close");
+  if (!root || !img || !closeBtn) return;
+
+  imageViewer = { root, img, closeBtn };
+
+  const close = () => closeImageViewer();
+  closeBtn.addEventListener("click", close);
+  root.addEventListener("click", (e) => {
+    if (e.target === root) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !root.hidden) close();
+  });
+}
+
+function openImageViewer(src, altText) {
+  if (!src) return;
+  if (!imageViewer) {
+    window.open(src, "_blank", "noopener");
+    return;
+  }
+
+  imageViewer.img.src = src;
+  imageViewer.img.alt = altText || "压缩结果大图";
+  imageViewer.root.hidden = false;
+  document.body.classList.add("viewer-open");
+  try {
+    imageViewer.closeBtn.focus({ preventScroll: true });
+  } catch {
+    imageViewer.closeBtn.focus();
+  }
+  toast("已打开大图，手机上可长按保存");
+}
+
+function closeImageViewer() {
+  if (!imageViewer) return;
+  imageViewer.root.hidden = true;
+  imageViewer.img.removeAttribute("src");
+  document.body.classList.remove("viewer-open");
+}
+
 /* 把分辨率分段值解析成 {w,h} 或 null(自动) */
 function parseRes(val) {
   if (!val || val === "auto") return null;
@@ -138,10 +187,24 @@ function parseRes(val) {
 function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, result, originalBytes, baseName) {
   const { blob, width, height, quality, status } = result;
   const url = URL.createObjectURL(blob);
-  imgEl.src = url;
 
   const ext = blob.type === "image/webp" ? "webp" : "jpg";
   const kb = Math.round(blob.size / DECIMAL_KB);
+  // 照片统一保存到 pics/, 文件名带时间戳避免覆盖
+  const filename = `${baseName}_${kb}kb_${width}x${height}_${stamp()}.${ext}`;
+
+  imgEl.src = url;
+  imgEl.alt = `${filename} 预览`;
+  imgEl.classList.add("result-thumb-clickable");
+  imgEl.tabIndex = 0;
+  imgEl.setAttribute("role", "button");
+  imgEl.setAttribute("title", "查看大图");
+  imgEl.onclick = () => openImageViewer(url, filename);
+  imgEl.onkeydown = (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    openImageViewer(url, filename);
+  };
 
   const ok = status === "ok";
   const badge = ok
@@ -160,8 +223,6 @@ function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, result, 
 
   metaEl.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   cardEl.hidden = false;
-  // 照片统一保存到 pics/, 文件名带时间戳避免覆盖
-  const filename = `${baseName}_${kb}kb_${width}x${height}_${stamp()}.${ext}`;
   dlBtn.onclick = () => saveOutput("pics", filename, blob);
   if (uploadBtn) {
     uploadBtn.disabled = false;
@@ -371,6 +432,7 @@ function initVideo() {
   const resultCard = $("vid-result");
   const videoEl = $("vid-out-video");
   const metaEl = $("vid-out-meta");
+  const savePhoneBtn = $("vid-save-phone");
   const downloadBtn = $("vid-download");
   const copyLinkBtn = $("vid-copy-link");
 
@@ -379,6 +441,7 @@ function initVideo() {
 
   let sourceFile = null;
   let resultUrl = "";
+  let resultDownloadUrl = "";
   let resultName = "";
 
   function setProgress(percent) {
@@ -414,6 +477,7 @@ function initVideo() {
     sourceFile = file;
     resultCard.hidden = true;
     resultUrl = "";
+    resultDownloadUrl = "";
     resultName = "";
     runBtn.disabled = false;
     statusEl.textContent = "";
@@ -466,6 +530,24 @@ function initVideo() {
     });
   }
 
+  function getResultHref(url = resultDownloadUrl || resultUrl) {
+    return new URL(url, window.location.href).href;
+  }
+
+  async function fetchResultBlob() {
+    const resp = await fetch(resultDownloadUrl || resultUrl, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    return blob.type ? blob : new Blob([blob], { type: "video/mp4" });
+  }
+
+  function openResultVideo() {
+    const opened = window.open(getResultHref(resultUrl), "_blank", "noopener");
+    if (!opened) {
+      window.location.href = getResultHref(resultUrl);
+    }
+  }
+
   fileInput.addEventListener("change", (e) => setVideoFile(e.target.files[0]));
   ["dragenter", "dragover"].forEach((ev) =>
     drop.addEventListener(ev, (e) => {
@@ -493,6 +575,7 @@ function initVideo() {
       const data = await postVideoForTranscode(sourceFile);
       setProgress(100);
       resultUrl = data.url;
+      resultDownloadUrl = data.downloadUrl || data.url;
       resultName = data.filename || `${cleanBaseName(sourceFile.name)}_compressed.mp4`;
       videoEl.src = resultUrl;
       const selectedSize = getSelectedSize();
@@ -524,14 +607,53 @@ function initVideo() {
     }
   });
 
+  savePhoneBtn.addEventListener("click", async () => {
+    if (!resultUrl) return;
+
+    const canTryFileShare =
+      window.isSecureContext &&
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      typeof File === "function";
+
+    if (!canTryFileShare) {
+      openResultVideo();
+      toast("已打开压缩视频，可用手机浏览器的分享/保存菜单保存");
+      return;
+    }
+
+    savePhoneBtn.disabled = true;
+    savePhoneBtn.textContent = "准备分享…";
+    try {
+      const blob = await fetchResultBlob();
+      const file = new File([blob], resultName || "compressed.mp4", {
+        type: blob.type || "video/mp4",
+      });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "短波发送压缩视频",
+          text: "已压缩到短波传输大小的视频文件",
+        });
+        toast("已打开手机保存/分享面板");
+      } else {
+        downloadBlob(blob, resultName || "compressed.mp4");
+        toast("当前浏览器不支持视频分享，已改为下载");
+      }
+    } catch (e) {
+      toast("保存/分享失败: " + (e.message || e));
+    } finally {
+      savePhoneBtn.disabled = false;
+      savePhoneBtn.textContent = "保存/分享至手机";
+    }
+  });
+
   downloadBtn.addEventListener("click", async () => {
     if (!resultUrl) return;
     downloadBtn.disabled = true;
     downloadBtn.textContent = "下载中…";
     try {
-      const resp = await fetch(resultUrl, { cache: "no-store" });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const blob = await resp.blob();
+      const blob = await fetchResultBlob();
       downloadBlob(blob, resultName || "compressed.mp4");
     } catch (e) {
       toast("下载失败: " + (e.message || e));
@@ -543,7 +665,7 @@ function initVideo() {
 
   copyLinkBtn.addEventListener("click", async () => {
     if (!resultUrl) return;
-    const href = new URL(resultUrl, window.location.href).href;
+    const href = getResultHref(resultUrl);
     try {
       await navigator.clipboard.writeText(href);
       toast("已复制视频链接");
@@ -1152,6 +1274,7 @@ function initAudio() {
    ============================================================ */
 initClock();
 initTabs();
+initImageViewer();
 initStorage();
 initCamera();
 initImageFile();

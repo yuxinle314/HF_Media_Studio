@@ -233,7 +233,8 @@
               <dl class="result-meta" id="vid-out-meta"></dl>
             </div>
             <div class="row result-actions">
-              <button class="btn btn-primary" id="vid-download">下载到本机</button>
+              <button class="btn btn-primary" id="vid-save-phone">保存/分享至手机</button>
+              <button class="btn btn-secondary" id="vid-download">下载到本机</button>
               <button class="btn btn-secondary" id="vid-copy-link">复制链接</button>
             </div>
           </div>
@@ -325,6 +326,11 @@
         </p>
         <p>照片存入 <code>pics/</code>，音频存入 <code>voices/</code>，视频存入 <code>server_uploads/videos/</code> · 语音识别由浏览器能力提供 · 摄像头/麦克风需在 HTTPS 或 localhost 下授权</p>
       </footer>
+    </div>
+
+    <div class="image-viewer" id="image-viewer" role="dialog" aria-modal="true" hidden>
+      <button class="image-viewer-close" id="image-viewer-close" type="button" aria-label="关闭大图">×</button>
+      <img id="image-viewer-img" alt="压缩结果大图" />
     </div>
 
     <div class="toast" id="toast" hidden></div>
