@@ -51,7 +51,7 @@ async function uploadOutput(subdir, filename, blob, btn) {
   if (!blob) return;
   if (blob.size > TRANSFER_LIMIT_BYTES) {
     toast(`上传失败: 文件超过 ${formatBytes(TRANSFER_LIMIT_BYTES)}`);
-    return;
+    return null;
   }
 
   const originalText = btn ? btn.textContent : "";
@@ -74,8 +74,40 @@ async function uploadOutput(subdir, filename, blob, btn) {
       throw new Error(data?.error || `HTTP ${resp.status}`);
     }
     toast(`已上传到服务电脑: ${data.path}`);
+    return data;
   } catch (e) {
     toast("上传失败: " + (e.message || e));
+    return null;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+}
+
+async function saveExactPictureFile(filename, blob, btn) {
+  if (fsSupported()) {
+    await saveOutput("pics", filename, blob);
+    return;
+  }
+
+  const originalText = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "准备下载…";
+  }
+
+  try {
+    const data = await uploadOutput("pics", filename, blob, null);
+    if (data?.downloadUrl) {
+      const href = new URL(data.downloadUrl, window.location.href).href;
+      toast("请在系统提示中选择下载或存储到文件");
+      window.location.href = href;
+      return;
+    }
+    downloadBlob(blob, filename);
+    toast(`已下载 ${filename}`);
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -166,7 +198,7 @@ function openImageViewer(src, altText) {
   } catch {
     imageViewer.closeBtn.focus();
   }
-  toast("已打开大图，手机上可长按保存");
+  toast("大图仅供查看，发送请保存压缩文件");
 }
 
 function closeImageViewer() {
@@ -237,7 +269,7 @@ async function renderImageResult({ imgEl, metaEl, cardEl, dlBtn, uploadBtn }, re
 
   metaEl.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
   cardEl.hidden = false;
-  dlBtn.onclick = () => saveOutput("pics", filename, blob);
+  dlBtn.onclick = () => saveExactPictureFile(filename, blob, dlBtn);
   if (uploadBtn) {
     uploadBtn.disabled = false;
     uploadBtn.onclick = () => uploadOutput("pics", filename, blob, uploadBtn);

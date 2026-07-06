@@ -273,12 +273,16 @@ function Save-UploadedBlob {
 
   [System.IO.File]::WriteAllBytes($TargetPath, $Body)
   $StoredName = [System.IO.Path]::GetFileName($TargetPath)
+  $EncodedStoredName = [System.Uri]::EscapeDataString($StoredName)
+  $EncodedSubdir = [System.Uri]::EscapeDataString($Subdir)
 
   @{
     ok = $true
     filename = $StoredName
     bytes = $Body.Length
     path = "server_uploads/$Subdir/$StoredName"
+    url = "/server_uploads/$Subdir/$EncodedStoredName"
+    downloadUrl = "/api/file/download?subdir=$EncodedSubdir&file=$EncodedStoredName"
   }
 }
 
@@ -692,6 +696,58 @@ function Get-AsciiFileName {
   $AsciiName
 }
 
+function Send-UploadedFileDownload {
+  param(
+    [System.IO.Stream]$Stream,
+    [string]$Subdir,
+    [string]$FileName,
+    [bool]$IncludeBody = $true
+  )
+
+  if ($Subdir -notin @("pics", "voices", "videos")) {
+    Send-Text -Stream $Stream -StatusCode 400 -Reason "Bad Request" -Text "Unsupported download directory." -IncludeBody $IncludeBody
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($FileName)) {
+    Send-Text -Stream $Stream -StatusCode 400 -Reason "Bad Request" -Text "Missing file name." -IncludeBody $IncludeBody
+    return
+  }
+
+  $SafeName = Get-SafeUploadFileName -FileName $FileName
+  $Ext = [System.IO.Path]::GetExtension($SafeName).ToLowerInvariant()
+  $AllowedExts = @(".jpg", ".jpeg", ".webp", ".png", ".mp3", ".wav", ".c2", ".txt", ".mp4", ".m4v", ".mov", ".webm")
+  if ($Ext -notin $AllowedExts) {
+    Send-Text -Stream $Stream -StatusCode 400 -Reason "Bad Request" -Text "Unsupported download file type." -IncludeBody $IncludeBody
+    return
+  }
+
+  $TargetDir = [System.IO.Path]::GetFullPath((Join-Path $UploadRoot $Subdir))
+  $TargetDirWithSlash = $TargetDir.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+  $FullPath = [System.IO.Path]::GetFullPath((Join-Path $TargetDir $SafeName))
+
+  if (-not $FullPath.StartsWith($TargetDirWithSlash, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Send-Text -Stream $Stream -StatusCode 403 -Reason "Forbidden" -Text "Forbidden" -IncludeBody $IncludeBody
+    return
+  }
+  if (-not [System.IO.File]::Exists($FullPath)) {
+    Send-Text -Stream $Stream -StatusCode 404 -Reason "Not Found" -Text "File not found." -IncludeBody $IncludeBody
+    return
+  }
+
+  $Body = [System.IO.File]::ReadAllBytes($FullPath)
+  $EncodedName = [System.Uri]::EscapeDataString($SafeName)
+  $AsciiName = Get-AsciiFileName -FileName $SafeName
+  $ContentType = Get-ContentType -Path $FullPath
+  Send-Response `
+    -Stream $Stream `
+    -StatusCode 200 `
+    -Reason "OK" `
+    -Body $Body `
+    -ContentType $ContentType `
+    -IncludeBody $IncludeBody `
+    -ExtraHeaders @("Content-Disposition: attachment; filename=`"$AsciiName`"; filename*=UTF-8''$EncodedName")
+}
+
 function Send-VideoDownload {
   param(
     [System.IO.Stream]$Stream,
@@ -699,41 +755,7 @@ function Send-VideoDownload {
     [bool]$IncludeBody = $true
   )
 
-  if ([string]::IsNullOrWhiteSpace($FileName)) {
-    Send-Text -Stream $Stream -StatusCode 400 -Reason "Bad Request" -Text "Missing video file name." -IncludeBody $IncludeBody
-    return
-  }
-
-  $SafeName = Get-SafeUploadFileName -FileName $FileName
-  if ([System.IO.Path]::GetExtension($SafeName).ToLowerInvariant() -ne ".mp4") {
-    Send-Text -Stream $Stream -StatusCode 400 -Reason "Bad Request" -Text "Only MP4 video downloads are supported." -IncludeBody $IncludeBody
-    return
-  }
-
-  $VideoDir = [System.IO.Path]::GetFullPath((Join-Path $UploadRoot "videos"))
-  $VideoDirWithSlash = $VideoDir.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-  $FullPath = [System.IO.Path]::GetFullPath((Join-Path $VideoDir $SafeName))
-
-  if (-not $FullPath.StartsWith($VideoDirWithSlash, [System.StringComparison]::OrdinalIgnoreCase)) {
-    Send-Text -Stream $Stream -StatusCode 403 -Reason "Forbidden" -Text "Forbidden" -IncludeBody $IncludeBody
-    return
-  }
-  if (-not [System.IO.File]::Exists($FullPath)) {
-    Send-Text -Stream $Stream -StatusCode 404 -Reason "Not Found" -Text "Video not found." -IncludeBody $IncludeBody
-    return
-  }
-
-  $Body = [System.IO.File]::ReadAllBytes($FullPath)
-  $EncodedName = [System.Uri]::EscapeDataString($SafeName)
-  $AsciiName = Get-AsciiFileName -FileName $SafeName
-  Send-Response `
-    -Stream $Stream `
-    -StatusCode 200 `
-    -Reason "OK" `
-    -Body $Body `
-    -ContentType "video/mp4" `
-    -IncludeBody $IncludeBody `
-    -ExtraHeaders @("Content-Disposition: attachment; filename=`"$AsciiName`"; filename*=UTF-8''$EncodedName")
+  Send-UploadedFileDownload -Stream $Stream -Subdir "videos" -FileName $FileName -IncludeBody $IncludeBody
 }
 
 function Test-Authorized {
@@ -934,6 +956,15 @@ try {
         $DownloadFileName = $Query["file"]
         Send-VideoDownload -Stream $Stream -FileName $DownloadFileName -IncludeBody $IncludeBody
         Write-Host "$Method $RequestPath -> download $DownloadFileName"
+        continue
+      }
+
+      if ($RequestPath -eq "/api/file/download") {
+        $Query = Get-QueryParams -Target $RequestTarget
+        $DownloadSubdir = $Query["subdir"]
+        $DownloadFileName = $Query["file"]
+        Send-UploadedFileDownload -Stream $Stream -Subdir $DownloadSubdir -FileName $DownloadFileName -IncludeBody $IncludeBody
+        Write-Host "$Method $RequestPath -> download $DownloadSubdir/$DownloadFileName"
         continue
       }
 
